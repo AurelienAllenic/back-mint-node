@@ -17,7 +17,16 @@ exports.register = async (req, res) => {
     const newUser = new User({ email, password: password });
     await newUser.save();
 
-    res.status(201).json({ message: "Utilisateur créé avec succès." });
+    res.status(201).json({
+      message: "Utilisateur créé avec succès.",
+      email: newUser.email,
+      userId: newUser._id,
+      token: jwt.sign(
+        { userId: newUser._id },
+        process.env.RANDOM_SECRET_TOKEN || "secret_key",
+        { expiresIn: "24h" }
+      ),
+    });
   } catch (error) {
     res.status(500).json({ message: "Erreur lors de l'inscription.", error });
   }
@@ -43,10 +52,11 @@ exports.login = (req, res, next) => {
           }
 
           res.status(200).json({
+            email: user.email,
             userId: user._id,
             token: jwt.sign(
               { userId: user._id },
-              process.env.RANDOM_SECRET_TOKEN,
+              process.env.RANDOM_SECRET_TOKEN || "secret_key",
               { expiresIn: "24h" }
             ),
           });
