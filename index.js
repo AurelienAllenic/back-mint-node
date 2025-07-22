@@ -5,7 +5,9 @@ const corsConfig = require("./config/corsConfig");
 const authRoutes = require("./routes/authRoutes");
 
 const organizationRoutes = require("./routes/organizationRoutes");
+
 const raceRoutes = require("./routes/raceRoutes");
+const userRoutes = require("./routes/userRoutes");
 
 require("dotenv").config();
 const app = express();
@@ -26,6 +28,8 @@ app.use("/auth", authRoutes);
 app.use("/organization", organizationRoutes);
 
 app.use("/race", raceRoutes);
+
+app.use("/users", userRoutes);
 
 app.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}`);
