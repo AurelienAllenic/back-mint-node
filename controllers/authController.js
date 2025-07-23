@@ -43,7 +43,6 @@ exports.login = (req, res, next) => {
         return res.status(401).json({ error: "Utilisateur non trouvé !" });
       }
 
-      // On nettoie les espaces éventuels avant de comparer
       bcrypt
         .compare(req.body.password.trim(), user.password)
         .then((valid) => {
@@ -54,10 +53,19 @@ exports.login = (req, res, next) => {
               .json({ error: "Paire username/password incorrecte !" });
           }
 
+          // Découper le nom en prénom/nom si possible
+          let firstname = "";
+          let lastname = "";
+          if (user.name) {
+            const parts = user.name.trim().split(" ");
+            firstname = parts[0] || "";
+            lastname = parts.slice(1).join(" ") || "";
+          }
+
           res.status(200).json({
-            email: user.email,
-            userId: user._id,
-            accessToken: jwt.sign(
+            technicalUser: { email: user.email },
+            userProfile: { firstname, lastname },
+            access_token: jwt.sign(
               { userId: user._id },
               process.env.RANDOM_SECRET_TOKEN || "secret_key",
               { expiresIn: "24h" }
