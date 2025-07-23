@@ -5,37 +5,7 @@ exports.createRace = async (req, res) => {
   try {
     const race = new Race({ ...req.body, owner: req.userId });
     await race.save();
-    // Adapter la réponse pour le front
-    // runners: tableau d'emails si possible, sinon d'ids
-    // startLocation/endLocation/route à parser du GPX si besoin (ici fictif)
-    let startLocation = { latitude: 0, longitude: 0 };
-    let endLocation = { latitude: 0, longitude: 0 };
-    let route = [];
-    let gpxFileName = race.gpxFile ? race.gpxFile.split("/").pop() : "";
-    // runners: emails si peuplé, sinon ids
-    let runners = Array.isArray(race.runners)
-      ? race.runners.map((r) => (r.email ? r.email : r.toString()))
-      : [];
-    res.status(201).json({
-      id: race._id.toString(),
-      name: race.name,
-      runners,
-      startLocation,
-      endLocation,
-      createdBy: req.user ? req.user.email : req.userId,
-      route,
-      startDate: race.startDate
-        ? race.startDate.toISOString().split("T")[0]
-        : "",
-      endDate: race.endDate ? race.endDate.toISOString().split("T")[0] : "",
-      startTime: race.startDate
-        ? race.startDate.toISOString().split("T")[1]?.substring(0, 8)
-        : "",
-      endTime: race.endDate
-        ? race.endDate.toISOString().split("T")[1]?.substring(0, 8)
-        : "",
-      gpxFileName,
-    });
+    res.status(201).json(race);
   } catch (error) {
     res
       .status(500)
@@ -50,43 +20,7 @@ exports.getRaces = async (req, res) => {
       .populate("organization")
       .populate("runners")
       .populate("owner");
-    // Adapter le format pour le front
-    const formatted = races.map((race) => {
-      // Extraction des infos GPX (si stockées en string, à adapter si besoin)
-      // startLocation/endLocation fictifs ici, à adapter selon ton modèle GPX
-      let startLocation = { latitude: 0, longitude: 0 };
-      let endLocation = { latitude: 0, longitude: 0 };
-      let routeLength = 0;
-      let gpxFileName = race.gpxFile ? race.gpxFile.split("/").pop() : "";
-      // Si tu stockes les points GPX dans gpxFile, tu peux parser ici
-      // runnersCount = nombre de coureurs inscrits
-      return {
-        id: race._id.toString(),
-        name: race.name,
-        createdBy:
-          race.owner && race.owner.email
-            ? race.owner.email
-            : race.owner
-            ? race.owner.toString()
-            : "",
-        startDate: race.startDate
-          ? race.startDate.toISOString().split("T")[0]
-          : "",
-        endDate: race.endDate ? race.endDate.toISOString().split("T")[0] : "",
-        startTime: race.startDate
-          ? race.startDate.toISOString().split("T")[1]?.slice(0, 5)
-          : "",
-        endTime: race.endDate
-          ? race.endDate.toISOString().split("T")[1]?.slice(0, 5)
-          : "",
-        startLocation,
-        endLocation,
-        routeLength,
-        runnersCount: race.runners ? race.runners.length : 0,
-        gpxFileName,
-      };
-    });
-    res.status(200).json(formatted);
+    res.status(200).json(races);
   } catch (error) {
     res
       .status(500)
