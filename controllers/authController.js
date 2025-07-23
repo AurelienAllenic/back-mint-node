@@ -7,22 +7,34 @@ const SECRET_KEY = process.env.JWT_SECRET || "secret_key";
 // Inscription
 exports.register = async (req, res) => {
   console.log("req.body:", req.body);
-  const { email, password, lastname, name } = req.body;
+  const { email, password, firstname, lastname, name } = req.body;
 
   try {
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res.status(400).json({ message: "Cet utilisateur existe déjà." });
     }
-    // On accepte lastname ou name pour compatibilité frontend
-    const userName = lastname || name || "";
-    const newUser = new User({ email, password: password, name: userName });
+    // On accepte name ("Prénom Nom") ou firstname/lastname séparés
+    let finalFirstname = firstname;
+    let finalLastname = lastname;
+    if ((!firstname || !lastname) && name) {
+      const parts = name.trim().split(" ");
+      finalFirstname = parts[0] || "";
+      finalLastname = parts.slice(1).join(" ") || "";
+    }
+    const newUser = new User({
+      email,
+      password,
+      firstname: finalFirstname,
+      lastname: finalLastname,
+    });
     await newUser.save();
 
     res.status(201).json({
       message: "Utilisateur créé avec succès.",
       email: newUser.email,
-      name: newUser.name,
+      firstname: newUser.firstname,
+      lastname: newUser.lastname,
       userId: newUser._id,
       accessToken: jwt.sign(
         { userId: newUser._id },
