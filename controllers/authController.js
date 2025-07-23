@@ -65,18 +65,15 @@ exports.login = (req, res, next) => {
               .json({ error: "Paire username/password incorrecte !" });
           }
 
-          // Découper le nom en prénom/nom si possible
-          let firstname = "";
-          let lastname = "";
-          if (user.name) {
-            const parts = user.name.trim().split(" ");
-            firstname = parts[0] || "";
-            lastname = parts.slice(1).join(" ") || "";
-          }
+          // Utiliser les champs firstname et lastname du modèle
+          const firstname = user.firstname || "";
+          const lastname = user.lastname || "";
 
           res.status(200).json({
             technicalUser: { email: user.email },
             userProfile: { firstname, lastname },
+            firstname,
+            lastname,
             access_token: jwt.sign(
               { userId: user._id },
               process.env.RANDOM_SECRET_TOKEN || "secret_key",
