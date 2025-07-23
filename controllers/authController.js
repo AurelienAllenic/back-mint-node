@@ -1,3 +1,16 @@
+// Générer un token visiteur temporaire (accès sans compte)
+exports.visitorToken = (req, res) => {
+  // Générer un JWT avec un rôle "visitor" et une durée courte (ex: 2h)
+  const token = jwt.sign(
+    { role: "visitor" },
+    process.env.RANDOM_SECRET_TOKEN || "secret_key",
+    { expiresIn: "2h" }
+  );
+  res.status(200).json({
+    accessToken: token,
+    role: "visitor",
+  });
+};
 const User = require("../models/User");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
