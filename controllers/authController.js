@@ -7,21 +7,24 @@ const SECRET_KEY = process.env.JWT_SECRET || "secret_key";
 // Inscription
 exports.register = async (req, res) => {
   console.log("req.body:", req.body);
-  const { email, password } = req.body;
+  const { email, password, lastname, name } = req.body;
 
   try {
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res.status(400).json({ message: "Cet utilisateur existe déjà." });
     }
-    const newUser = new User({ email, password: password });
+    // On accepte lastname ou name pour compatibilité frontend
+    const userName = lastname || name || "";
+    const newUser = new User({ email, password: password, name: userName });
     await newUser.save();
 
     res.status(201).json({
       message: "Utilisateur créé avec succès.",
       email: newUser.email,
+      name: newUser.name,
       userId: newUser._id,
-      token: jwt.sign(
+      accessToken: jwt.sign(
         { userId: newUser._id },
         process.env.RANDOM_SECRET_TOKEN || "secret_key",
         { expiresIn: "24h" }
@@ -54,7 +57,7 @@ exports.login = (req, res, next) => {
           res.status(200).json({
             email: user.email,
             userId: user._id,
-            token: jwt.sign(
+            accessToken: jwt.sign(
               { userId: user._id },
               process.env.RANDOM_SECRET_TOKEN || "secret_key",
               { expiresIn: "24h" }
@@ -92,6 +95,7 @@ exports.verifyToken = (req, res) => {
       isValid: true,
       message: "Token valide.",
       userId: decodedToken.userId,
+      accessToken: token,
     });
   } catch (error) {
     console.error("Erreur lors de la vérification du token:", error);
