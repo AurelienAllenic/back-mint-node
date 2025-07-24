@@ -5,11 +5,14 @@ exports.getProfile = async (req, res) => {
   try {
     const userId = req.userId; // Depuis le middleware d'auth
 
-    const user = await User.findById(userId, "_id email firstname lastname profileImage");
+    const user = await User.findById(
+      userId,
+      "_id email firstname lastname profileImage"
+    );
 
     if (!user) {
-      return res.status(404).json({ 
-        message: "Utilisateur non trouvé." 
+      return res.status(404).json({
+        message: "Utilisateur non trouvé.",
       });
     }
 
@@ -31,8 +34,8 @@ exports.updateProfile = async (req, res) => {
 
     // Vérifier qu'au moins un champ est fourni
     if (!firstname && !lastname && !profileImage) {
-      return res.status(400).json({ 
-        message: "Aucun champ à mettre à jour." 
+      return res.status(400).json({
+        message: "Aucun champ à mettre à jour.",
       });
     }
 
@@ -49,14 +52,14 @@ exports.updateProfile = async (req, res) => {
     });
 
     if (!user) {
-      return res.status(404).json({ 
-        message: "Utilisateur non trouvé." 
+      return res.status(404).json({
+        message: "Utilisateur non trouvé.",
       });
     }
 
     res.status(200).json({
       message: "Profil mis à jour avec succès",
-      user: user
+      user: user,
     });
   } catch (error) {
     console.error("Erreur lors de la mise à jour du profil:", error);
@@ -97,7 +100,10 @@ exports.updateUserNames = async (req, res) => {
 // Récupérer tous les utilisateurs (email et id seulement)
 exports.getUsers = async (req, res) => {
   try {
-    const users = await User.find({}, "_id email firstname lastname");
+    const users = await User.find(
+      {},
+      "_id email firstname lastname profileImage"
+    );
     res.status(200).json(users);
   } catch (error) {
     res.status(500).json({
