@@ -4,7 +4,7 @@ exports.visitorToken = (req, res) => {
   const token = jwt.sign(
     { role: "visitor" },
     process.env.RANDOM_SECRET_TOKEN || "secret_key",
-    { expiresIn: "2h" }
+    { expiresIn: "7d" }
   );
   res.status(200).json({
     accessToken: token,
