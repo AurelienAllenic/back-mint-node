@@ -85,7 +85,11 @@ exports.login = (req, res, next) => {
 
           res.status(200).json({
             technicalUser: { email: user.email },
-            userProfile: { firstname, lastname, profileImage: user.profileImage },
+            userProfile: {
+              firstname,
+              lastname,
+              profileImage: user.profileImage,
+            },
             firstname,
             lastname,
             profileImage: user.profileImage,
@@ -132,9 +136,9 @@ exports.verifyToken = async (req, res) => {
     );
 
     if (!user) {
-      return res.status(404).json({ 
-        isValid: false, 
-        message: "Utilisateur non trouvé." 
+      return res.status(404).json({
+        isValid: false,
+        message: "Utilisateur non trouvé.",
       });
     }
 
