@@ -48,6 +48,7 @@ exports.register = async (req, res) => {
       email: newUser.email,
       firstname: newUser.firstname,
       lastname: newUser.lastname,
+      profileImage: newUser.profileImage,
       userId: newUser._id,
       accessToken: jwt.sign(
         { userId: newUser._id },
@@ -84,9 +85,11 @@ exports.login = (req, res, next) => {
 
           res.status(200).json({
             technicalUser: { email: user.email },
-            userProfile: { firstname, lastname },
+            userProfile: { firstname, lastname, profileImage: user.profileImage },
             firstname,
             lastname,
+            profileImage: user.profileImage,
+            _id: user._id,
             access_token: jwt.sign(
               { userId: user._id },
               process.env.RANDOM_SECRET_TOKEN || "secret_key",
@@ -105,7 +108,7 @@ exports.login = (req, res, next) => {
     });
 };
 
-exports.verifyToken = (req, res) => {
+exports.verifyToken = async (req, res) => {
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -121,10 +124,31 @@ exports.verifyToken = (req, res) => {
       token,
       process.env.RANDOM_SECRET_TOKEN || "secret_key"
     );
+
+    // Récupérer les informations complètes de l'utilisateur
+    const user = await User.findById(
+      decodedToken.userId,
+      "_id email firstname lastname profileImage"
+    );
+
+    if (!user) {
+      return res.status(404).json({ 
+        isValid: false, 
+        message: "Utilisateur non trouvé." 
+      });
+    }
+
     res.status(200).json({
       isValid: true,
       message: "Token valide.",
       userId: decodedToken.userId,
+      user: {
+        _id: user._id,
+        email: user.email,
+        firstname: user.firstname,
+        lastname: user.lastname,
+        profileImage: user.profileImage,
+      },
       accessToken: token,
     });
   } catch (error) {
