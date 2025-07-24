@@ -5,7 +5,7 @@ const auth = require("../middleware/auth");
 
 router.post("/", auth, raceController.createRace);
 router.get("/", raceController.getRaces);
-router.get("/:id", auth, raceController.getRace);
+router.get("/:id", raceController.getRace);
 router.put("/:id", auth, raceController.updateRace);
 router.delete("/:id", auth, raceController.deleteRace);
 
