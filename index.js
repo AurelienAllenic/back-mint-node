@@ -8,6 +8,7 @@ const organizationRoutes = require("./routes/organizationRoutes");
 
 const raceRoutes = require("./routes/raceRoutes");
 const userRoutes = require("./routes/userRoutes");
+const visitorRoutes = require("./routes/visitorRoutes");
 
 require("dotenv").config();
 const app = express();
@@ -30,6 +31,8 @@ app.use("/organizations", organizationRoutes);
 app.use("/race", raceRoutes);
 
 app.use("/users", userRoutes);
+
+app.use("/visitor", visitorRoutes);
 
 app.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}`);
