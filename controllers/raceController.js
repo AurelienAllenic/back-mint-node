@@ -25,56 +25,45 @@ exports.createPaymentIntent = async (req, res) => {
 };
 
 exports.createSubscription = async (req, res) => {
-  const userId = req.user.id;
+  if (!req.user) return res.status(401).json({ error: "Non authentifié" });
+
+  const userId = req.user._id.toString();
   const userEmail = req.user.email;
 
   try {
-    // 1. Récupérer ou créer le client Stripe
     let customer = await stripe.customers.list({ email: userEmail, limit: 1 });
-    if (customer.data.length === 0) {
+    if (!customer.data.length) {
       customer = await stripe.customers.create({
         email: userEmail,
-        name: req.user.firstname
-          ? `${req.user.firstname} ${req.user.lastname || ""}`.trim()
-          : null,
-        metadata: { userId: userId.toString() },
+        metadata: { userId },
       });
     } else {
       customer = customer.data[0];
     }
 
-    // 2. Créer le SetupIntent (valide la carte)
     const setupIntent = await stripe.setupIntents.create({
       customer: customer.id,
       payment_method_types: ["card"],
       usage: "off_session",
-      metadata: { userId: userId.toString(), type: "premium_subscription" },
     });
 
-    // 3. Créer l'abonnement avec le price_id fixe
     const subscription = await stripe.subscriptions.create({
       customer: customer.id,
-      items: [
-        {
-          price: "price_1SQrSYCRrXyKqFuXUkJ3Blq1", // TON PRICE ID PREMIUM
-        },
-      ],
+      items: [{ price: "price_1SQrSYCRrXyKqFuXUkJ3Blq1" }],
       payment_behavior: "default_incomplete",
-      payment_settings: { save_default_payment_method: "on_subscription" },
       expand: ["latest_invoice.payment_intent"],
     });
 
-    // 4. Retourner le client_secret du SetupIntent
     res.json({
       clientSecret: setupIntent.client_secret,
       subscriptionId: subscription.id,
-      customerId: customer.id,
     });
   } catch (error) {
-    console.error("Erreur création abonnement:", error);
-    res.status(500).json({ error: error.message || "Erreur serveur" });
+    console.error("Erreur abonnement:", error);
+    res.status(500).json({ error: error.message });
   }
 };
+
 // Créer une course
 exports.createRace = async (req, res) => {
   try {
