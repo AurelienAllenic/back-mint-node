@@ -8,5 +8,6 @@ router.get("/", raceController.getRaces);
 router.get("/:id", raceController.getRace);
 router.put("/:id", auth, raceController.updateRace);
 router.delete("/:id", auth, raceController.deleteRace);
+router.post("/create-payment-intent", auth, raceController.createPaymentIntent);
 
 module.exports = router;
