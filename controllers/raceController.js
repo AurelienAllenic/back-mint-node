@@ -1,9 +1,80 @@
 const Race = require("../models/Race");
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
+
+// Créer un PaymentIntent pour le paiement
+exports.createPaymentIntent = async (req, res) => {
+  const { amount, currency, quantity } = req.body;
+
+  if (!amount || amount <= 0) {
+    return res.status(400).json({ error: "Montant invalide" });
+  }
+
+  try {
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: Math.round(amount * 100), // Convertit en centimes (ex. 1.5 € -> 150)
+      currency: currency || "eur",
+      payment_method_types: ["card"],
+      description: `Ajout de ${quantity} coureurs supplémentaires`, // Optionnel
+    });
+
+    res.json({ clientSecret: paymentIntent.client_secret });
+  } catch (error) {
+    console.error("Erreur création PaymentIntent:", error);
+    res.status(500).json({ error: "Erreur serveur Stripe" });
+  }
+};
 
 // Créer une course
 exports.createRace = async (req, res) => {
   try {
-    const race = new Race({ ...req.body, owner: req.userId });
+    const {
+      name,
+      startDate,
+      endDate,
+      organization,
+      runners,
+      gpxFile,
+      paymentIntentId,
+    } = req.body;
+    const owner = req.userId; // Assume middleware auth
+
+    // Validations basiques
+    if (!name || !startDate || !endDate || !organization || !runners) {
+      return res.status(400).json({ error: "Champs requis manquants" });
+    }
+
+    if (runners.length > 2) {
+      if (!paymentIntentId) {
+        return res
+          .status(400)
+          .json({ error: "Paiement requis pour plus de 2 coureurs" });
+      }
+
+      try {
+        const pi = await stripe.paymentIntents.retrieve(paymentIntentId);
+        if (pi.status !== "succeeded") {
+          return res.status(400).json({ error: "Paiement non confirmé" });
+        }
+
+        const expectedAmount = Math.round((runners.length - 2) * 1.5 * 100); // En centimes
+        if (pi.amount !== expectedAmount) {
+          return res.status(400).json({ error: "Montant paiement incorrect" });
+        }
+      } catch (error) {
+        console.error("Erreur vérification paiement:", error);
+        return res.status(500).json({ error: "Erreur vérification paiement" });
+      }
+    }
+
+    const race = new Race({
+      name,
+      startDate,
+      endDate,
+      organization,
+      runners,
+      gpxFile,
+      owner,
+    });
     await race.save();
     res.status(201).json(race);
   } catch (error) {
