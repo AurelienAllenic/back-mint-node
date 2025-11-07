@@ -42,7 +42,7 @@ exports.createSubscription = async (req, res) => {
   const userId = user._id.toString();
 
   try {
-    // 1. Récupère ou crée le Customer
+    // 1. Customer
     let customer = await stripe.customers.list({ email: userEmail, limit: 1 });
     if (!customer.data.length) {
       customer = await stripe.customers.create({
@@ -53,16 +53,14 @@ exports.createSubscription = async (req, res) => {
       customer = customer.data[0];
     }
 
-    // 2. Crée un PaymentIntent avec montant = 0 (validation carte gratuite)
-    const paymentIntent = await stripe.paymentIntents.create({
+    // 2. SetupIntent (valide la carte sans charge)
+    const setupIntent = await stripe.setupIntents.create({
       customer: customer.id,
-      amount: 0, // 0 centimes pour validation
-      currency: "eur",
-      automatic_payment_methods: { enabled: true },
-      metadata: { userId, type: "premium_subscription_setup" },
+      payment_method_types: ["card"],
+      usage: "off_session",
     });
 
-    // 3. Crée la Subscription (débute après validation)
+    // 3. Subscription (débute après validation)
     const subscription = await stripe.subscriptions.create({
       customer: customer.id,
       items: [{ price: "price_1SQrSYCRrXyKqFuXUkJ3Blq1" }],
@@ -72,7 +70,7 @@ exports.createSubscription = async (req, res) => {
     });
 
     res.json({
-      clientSecret: paymentIntent.client_secret, // PaymentIntent secret (format pi_...)
+      setupIntentClientSecret: setupIntent.client_secret, // ← Pour le frontend
       subscriptionId: subscription.id,
     });
   } catch (error) {
