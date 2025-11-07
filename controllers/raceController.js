@@ -25,10 +25,22 @@ exports.createPaymentIntent = async (req, res) => {
 };
 
 exports.createSubscription = async (req, res) => {
-  if (!req.user) return res.status(401).json({ error: "Non authentifié" });
+  if (!req.userId) {
+    return res.status(401).json({ error: "Non authentifié" });
+  }
 
-  const userId = req.user._id.toString();
-  const userEmail = req.user.email;
+  // Récupère l'utilisateur depuis la DB
+  const User = require("../models/User");
+  let user;
+  try {
+    user = await User.findById(req.userId);
+    if (!user) return res.status(404).json({ error: "Utilisateur non trouvé" });
+  } catch (err) {
+    return res.status(500).json({ error: "Erreur base de données" });
+  }
+
+  const userEmail = user.email;
+  const userId = user._id.toString();
 
   try {
     let customer = await stripe.customers.list({ email: userEmail, limit: 1 });
