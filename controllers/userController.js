@@ -1,4 +1,5 @@
 const User = require("../models/User");
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
 // Récupérer le profil de l'utilisateur authentifié
 exports.getProfile = async (req, res) => {
@@ -112,9 +113,6 @@ exports.getUsers = async (req, res) => {
     });
   }
 };
-
-const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
-const User = require("../models/User");
 
 exports.cancelSubscription = async (req, res) => {
   if (!req.userId) {
