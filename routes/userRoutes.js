@@ -14,4 +14,6 @@ router.patch("/profile", auth, userController.updateProfile);
 // Modifier prénom et/ou nom d'un utilisateur (admin)
 router.patch("/:userId/names", auth, userController.updateUserNames);
 
+router.post("/cancel-subscription", auth, userController.cancelSubscription);
+
 module.exports = router;
