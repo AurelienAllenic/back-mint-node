@@ -10,5 +10,10 @@ router.put("/:id", auth, raceController.updateRace);
 router.delete("/:id", auth, raceController.deleteRace);
 router.post("/create-payment-intent", auth, raceController.createPaymentIntent);
 router.post("/create-subscription", auth, raceController.createSubscription);
+router.post(
+  "/confirm-subscription",
+  auth,
+  raceController.confirmSubscriptionPayment
+);
 
 module.exports = router;

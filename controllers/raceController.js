@@ -29,7 +29,6 @@ exports.createSubscription = async (req, res) => {
     return res.status(401).json({ error: "Non authentifié" });
   }
 
-  const User = require("../models/User");
   let user;
   try {
     user = await User.findById(req.userId);
@@ -53,14 +52,14 @@ exports.createSubscription = async (req, res) => {
       customer = customer.data[0];
     }
 
-    // 2. SetupIntent (valide la carte sans charge)
+    // 2. SetupIntent
     const setupIntent = await stripe.setupIntents.create({
       customer: customer.id,
       payment_method_types: ["card"],
       usage: "off_session",
     });
 
-    // 3. Subscription (débute après validation)
+    // 3. Subscription (incomplète)
     const subscription = await stripe.subscriptions.create({
       customer: customer.id,
       items: [{ price: "price_1SQrSYCRrXyKqFuXUkJ3Blq1" }],
@@ -69,12 +68,42 @@ exports.createSubscription = async (req, res) => {
       expand: ["latest_invoice.payment_intent"],
     });
 
+    // ENVOIE AUSSI L'ID DE LA SUBSCRIPTION AU FRONTEND
     res.json({
-      setupIntentClientSecret: setupIntent.client_secret, // ← Pour le frontend
+      setupIntentClientSecret: setupIntent.client_secret,
       subscriptionId: subscription.id,
+      clientSecret: subscription.latest_invoice.payment_intent.client_secret,
+      // ↑ Ce client_secret est crucial pour confirmer le paiement
     });
   } catch (error) {
-    console.error("Erreur abonnement:", error);
+    console.error("Erreur création abonnement:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// Confirm subscription payment
+exports.confirmSubscriptionPayment = async (req, res) => {
+  const { subscriptionId } = req.body;
+
+  if (!req.userId) {
+    return res.status(401).json({ error: "Non authentifié" });
+  }
+
+  try {
+    const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+
+    // Vérifie que le paiement est bien réussi
+    if (
+      subscription.status === "active" ||
+      subscription.status === "trialing"
+    ) {
+      await User.findByIdAndUpdate(req.userId, { isPremium: true });
+      return res.json({ success: true, isPremium: true });
+    } else {
+      return res.status(400).json({ error: "Abonnement non actif" });
+    }
+  } catch (error) {
+    console.error("Erreur confirmation abonnement:", error);
     res.status(500).json({ error: error.message });
   }
 };

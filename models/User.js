@@ -7,7 +7,8 @@ const UserSchema = new mongoose.Schema({
   firstname: { type: String, required: false },
   lastname: { type: String, required: false },
   role: { type: String, default: "user", enum: ["user", "visitor"] },
-  profileImage: { type: String, required: false }, // URL ou path de l'image de profil
+  profileImage: { type: String, required: false },
+  isPremium: { type: Boolean, default: false },
 });
 
 // Hash password before saving it
