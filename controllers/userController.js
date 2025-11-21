@@ -8,7 +8,7 @@ exports.getProfile = async (req, res) => {
 
     const user = await User.findById(
       userId,
-      "_id email firstname lastname profileImage"
+      "_id email firstname lastname profileImage isPremium subscriptionId"
     );
 
     if (!user) {
