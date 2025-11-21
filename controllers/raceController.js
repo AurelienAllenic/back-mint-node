@@ -1,5 +1,6 @@
 const Race = require("../models/Race");
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
+const User = require("../models/User");
 
 // Créer un PaymentIntent pour le paiement
 exports.createPaymentIntent = async (req, res) => {
@@ -11,10 +12,10 @@ exports.createPaymentIntent = async (req, res) => {
 
   try {
     const paymentIntent = await stripe.paymentIntents.create({
-      amount: Math.round(amount * 100), // Convertit en centimes (ex. 1.5 € -> 150)
+      amount: Math.round(amount * 100),
       currency: currency || "eur",
       payment_method_types: ["card"],
-      description: `Ajout de ${quantity} coureurs supplémentaires`, // Optionnel
+      description: `Ajout de ${quantity} coureurs supplémentaires`,
     });
 
     res.json({ clientSecret: paymentIntent.client_secret });
@@ -29,51 +30,38 @@ exports.createSubscription = async (req, res) => {
     return res.status(401).json({ error: "Non authentifié" });
   }
 
-  let user;
-  try {
-    user = await User.findById(req.userId);
-    if (!user) return res.status(404).json({ error: "Utilisateur non trouvé" });
-  } catch (err) {
-    return res.status(500).json({ error: "Erreur base de données" });
-  }
-
-  const userEmail = user.email;
-  const userId = user._id.toString();
+  const user = await User.findById(req.userId);
+  if (!user) return res.status(404).json({ error: "Utilisateur non trouvé" });
 
   try {
-    // 1. Customer
-    let customer = await stripe.customers.list({ email: userEmail, limit: 1 });
-    if (!customer.data.length) {
+    // 1 — Customer
+    let customer = await stripe.customers.list({
+      email: user.email,
+      limit: 1,
+    });
+    if (customer.data.length === 0) {
       customer = await stripe.customers.create({
-        email: userEmail,
-        metadata: { userId },
+        email: user.email,
+        metadata: { userId: user._id.toString() },
       });
     } else {
       customer = customer.data[0];
     }
 
-    // 2. SetupIntent
-    const setupIntent = await stripe.setupIntents.create({
-      customer: customer.id,
-      payment_method_types: ["card"],
-      usage: "off_session",
-    });
-
-    // 3. Subscription (incomplète)
+    // 2 — Subscription incomplete (Stripe crée le PaymentIntent)
     const subscription = await stripe.subscriptions.create({
       customer: customer.id,
       items: [{ price: "price_1SQrSYCRrXyKqFuXUkJ3Blq1" }],
       payment_behavior: "default_incomplete",
-      payment_settings: { save_default_payment_method: "on_subscription" },
       expand: ["latest_invoice.payment_intent"],
     });
 
-    // ENVOIE AUSSI L'ID DE LA SUBSCRIPTION AU FRONTEND
+    const paymentIntent = subscription.latest_invoice.payment_intent;
+
+    // 3 — Envoi du clientSecret du PaymentIntent
     res.json({
-      setupIntentClientSecret: setupIntent.client_secret,
       subscriptionId: subscription.id,
-      clientSecret: subscription.latest_invoice.payment_intent.client_secret,
-      // ↑ Ce client_secret est crucial pour confirmer le paiement
+      clientSecret: paymentIntent.client_secret,
     });
   } catch (error) {
     console.error("Erreur création abonnement:", error);
