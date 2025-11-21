@@ -15,5 +15,6 @@ router.post(
   auth,
   raceController.confirmSubscriptionPayment
 );
+router.post("/activate-premium", auth, raceController.activatePremium);
 
 module.exports = router;

@@ -25,20 +25,48 @@ exports.createPaymentIntent = async (req, res) => {
   }
 };
 
-exports.createSubscription = async (req, res) => {
+exports.activatePremium = async (req, res) => {
+  const { subscriptionId } = req.body;
+
   if (!req.userId) {
     return res.status(401).json({ error: "Non authentifié" });
   }
+
+  try {
+    const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+
+    if (!subscription) {
+      return res.status(404).json({ error: "Subscription introuvable" });
+    }
+
+    // OPTIONNEL : Activer le paiement automatique si tu veux
+    await stripe.subscriptions.update(subscriptionId, {
+      payment_settings: { save_default_payment_method: "on_subscription" },
+      collection_method: "charge_automatically",
+    });
+
+    // Mise à jour de l'utilisateur
+    await User.findByIdAndUpdate(req.userId, {
+      isPremium: true,
+      subscriptionId,
+    });
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Erreur activatePremium:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+exports.createSubscription = async (req, res) => {
+  if (!req.userId) return res.status(401).json({ error: "Non authentifié" });
 
   const user = await User.findById(req.userId);
   if (!user) return res.status(404).json({ error: "Utilisateur non trouvé" });
 
   try {
-    // 1 — Customer
-    let customer = await stripe.customers.list({
-      email: user.email,
-      limit: 1,
-    });
+    let customer = await stripe.customers.list({ email: user.email, limit: 1 });
+
     if (customer.data.length === 0) {
       customer = await stripe.customers.create({
         email: user.email,
@@ -48,23 +76,19 @@ exports.createSubscription = async (req, res) => {
       customer = customer.data[0];
     }
 
-    // 2 — Subscription incomplete (Stripe crée le PaymentIntent)
     const subscription = await stripe.subscriptions.create({
       customer: customer.id,
       items: [{ price: "price_1SQrSYCRrXyKqFuXUkJ3Blq1" }],
+      trial_period_days: 7, // 👈 TRIAL
       payment_behavior: "default_incomplete",
-      expand: ["latest_invoice.payment_intent"],
     });
 
-    const paymentIntent = subscription.latest_invoice.payment_intent;
-
-    // 3 — Envoi du clientSecret du PaymentIntent
     res.json({
       subscriptionId: subscription.id,
-      clientSecret: paymentIntent.client_secret,
+      customerId: customer.id,
     });
   } catch (error) {
-    console.error("Erreur création abonnement:", error);
+    console.error("Erreur createSubscription:", error);
     res.status(500).json({ error: error.message });
   }
 };
