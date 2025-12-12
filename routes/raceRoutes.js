@@ -16,5 +16,6 @@ router.post(
   raceController.confirmSubscriptionPayment
 );
 router.post("/activate-premium", auth, raceController.activatePremium);
+router.post("/:id/leave", auth, raceController.leaveRace);
 
 module.exports = router;

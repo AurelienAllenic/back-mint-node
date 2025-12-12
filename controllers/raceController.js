@@ -243,3 +243,56 @@ exports.deleteRace = async (req, res) => {
       .json({ message: "Erreur lors de la suppression de la course.", error });
   }
 };
+
+// Quitter une course (se retirer en tant que participant)
+exports.leaveRace = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.userId;
+
+    if (!userId) {
+      return res.status(401).json({ message: "Non authentifié." });
+    }
+
+    // Trouver la course
+    const race = await Race.findById(id);
+    if (!race) {
+      return res.status(404).json({ message: "Course non trouvée." });
+    }
+
+    // Vérifier que l'utilisateur est bien un participant
+    const isParticipant = race.runners.some(
+      (runnerId) => runnerId.toString() === userId
+    );
+
+    if (!isParticipant) {
+      return res
+        .status(400)
+        .json({ message: "Vous n'êtes pas participant de cette course." });
+    }
+
+    // Retirer l'utilisateur de la liste des runners
+    race.runners = race.runners.filter(
+      (runnerId) => runnerId.toString() !== userId
+    );
+
+    await race.save();
+
+    // Retourner la course mise à jour avec les données populées
+    const updatedRace = await Race.findById(id)
+      .populate("organization")
+      .populate("runners")
+      .populate("owner");
+
+    res.status(200).json({
+      message: "Vous avez quitté la course avec succès.",
+      race: updatedRace,
+    });
+  } catch (error) {
+    console.error("Erreur lors de la désinscription:", error);
+    res.status(500).json({
+      message: "Erreur lors de la désinscription de la course.",
+      error: error.message,
+    });
+  }
+};
