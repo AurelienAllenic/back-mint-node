@@ -134,9 +134,31 @@ exports.createRace = async (req, res) => {
     } = req.body;
     const owner = req.userId; // Assume middleware auth
 
+    // Vérifier que l'utilisateur est bien un organisateur (déjà vérifié par middleware, mais double vérification)
+    const user = await User.findById(req.userId);
+    if (!user || user.role !== "organisateur") {
+      return res.status(403).json({
+        error: "Seuls les organisateurs peuvent créer des courses.",
+      });
+    }
+
     // Validations basiques
     if (!name || !startDate || !endDate || !organization || !runners) {
       return res.status(400).json({ error: "Champs requis manquants" });
+    }
+
+    // Vérifier que tous les runners sont bien des coureurs (pas des organisateurs)
+    if (runners && runners.length > 0) {
+      const runnersUsers = await User.find({ _id: { $in: runners } });
+      const nonCoureurs = runnersUsers.filter(
+        (u) => u.role !== "coureur"
+      );
+      if (nonCoureurs.length > 0) {
+        return res.status(400).json({
+          error:
+            "Seuls les coureurs peuvent participer à une course. Les organisateurs ne peuvent pas rejoindre de course.",
+        });
+      }
     }
 
     if (runners.length > 2) {
@@ -244,6 +266,67 @@ exports.deleteRace = async (req, res) => {
   }
 };
 
+// Rejoindre une course (seulement pour les coureurs)
+exports.joinRace = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.userId;
+
+    if (!userId) {
+      return res.status(401).json({ message: "Non authentifié." });
+    }
+
+    // Vérifier que l'utilisateur est bien un coureur (déjà vérifié par middleware, mais double vérification)
+    const user = await User.findById(userId);
+    if (!user || user.role !== "coureur") {
+      return res.status(403).json({
+        message: "Seuls les coureurs peuvent rejoindre une course.",
+      });
+    }
+
+    // Trouver la course
+    const race = await Race.findById(id);
+    if (!race) {
+      return res.status(404).json({ message: "Course non trouvée." });
+    }
+
+    // Vérifier que l'utilisateur n'est pas déjà participant
+    const isParticipant = race.runners.some(
+      (runnerId) => runnerId.toString() === userId
+    );
+
+    if (isParticipant) {
+      return res.status(400).json({
+        message: "Vous êtes déjà participant de cette course.",
+      });
+    }
+
+    // Ajouter l'utilisateur à la liste des runners
+    await Race.findByIdAndUpdate(
+      id,
+      { $addToSet: { runners: userId } },
+      { new: true }
+    );
+
+    // Retourner la course mise à jour avec les données populées
+    const updatedRace = await Race.findById(id)
+      .populate("organization")
+      .populate("runners")
+      .populate("owner");
+
+    res.status(200).json({
+      message: "Vous avez rejoint la course avec succès.",
+      race: updatedRace,
+    });
+  } catch (error) {
+    console.error("Erreur lors de l'inscription à la course:", error);
+    res.status(500).json({
+      message: "Erreur lors de l'inscription à la course.",
+      error: error.message,
+    });
+  }
+};
+
 // Quitter une course (se retirer en tant que participant)
 exports.leaveRace = async (req, res) => {
   try {
@@ -252,6 +335,14 @@ exports.leaveRace = async (req, res) => {
 
     if (!userId) {
       return res.status(401).json({ message: "Non authentifié." });
+    }
+
+    // Vérifier que l'utilisateur est bien un coureur (déjà vérifié par middleware, mais double vérification)
+    const user = await User.findById(userId);
+    if (!user || user.role !== "coureur") {
+      return res.status(403).json({
+        message: "Seuls les coureurs peuvent quitter une course.",
+      });
     }
 
     // Trouver la course
@@ -271,12 +362,12 @@ exports.leaveRace = async (req, res) => {
         .json({ message: "Vous n'êtes pas participant de cette course." });
     }
 
-    // Retirer l'utilisateur de la liste des runners
-    race.runners = race.runners.filter(
-      (runnerId) => runnerId.toString() !== userId
+    // Utiliser $pull pour retirer l'utilisateur de la liste des runners (opération atomique)
+    await Race.findByIdAndUpdate(
+      id,
+      { $pull: { runners: userId } },
+      { new: true }
     );
-
-    await race.save();
 
     // Retourner la course mise à jour avec les données populées
     const updatedRace = await Race.findById(id)

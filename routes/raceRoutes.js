@@ -2,12 +2,16 @@ const express = require("express");
 const router = express.Router();
 const raceController = require("../controllers/raceController");
 const auth = require("../middleware/auth");
+const isOrganisateur = require("../middleware/isOrganisateur");
+const isCoureur = require("../middleware/isCoureur");
 
-router.post("/", auth, raceController.createRace);
+// Créer une course : seulement organisateur
+router.post("/", auth, isOrganisateur, raceController.createRace);
 router.get("/", raceController.getRaces);
 router.get("/:id", raceController.getRace);
-router.put("/:id", auth, raceController.updateRace);
-router.delete("/:id", auth, raceController.deleteRace);
+// Modifier/Supprimer une course : seulement organisateur (et owner)
+router.put("/:id", auth, isOrganisateur, raceController.updateRace);
+router.delete("/:id", auth, isOrganisateur, raceController.deleteRace);
 router.post("/create-payment-intent", auth, raceController.createPaymentIntent);
 router.post("/create-subscription", auth, raceController.createSubscription);
 router.post(
@@ -16,6 +20,9 @@ router.post(
   raceController.confirmSubscriptionPayment
 );
 router.post("/activate-premium", auth, raceController.activatePremium);
-router.post("/:id/leave", auth, raceController.leaveRace);
+// Rejoindre une course : seulement coureur
+router.post("/:id/join", auth, isCoureur, raceController.joinRace);
+// Quitter une course : seulement coureur
+router.post("/:id/leave", auth, isCoureur, raceController.leaveRace);
 
 module.exports = router;
