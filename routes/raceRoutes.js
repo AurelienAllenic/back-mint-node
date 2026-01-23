@@ -8,6 +8,8 @@ const isCoureur = require("../middleware/isCoureur");
 // Créer une course : seulement organisateur
 router.post("/", auth, isOrganisateur, raceController.createRace);
 router.get("/", raceController.getRaces);
+// IMPORTANT : Cette route doit être AVANT /:id pour éviter les conflits
+router.get("/my-races", auth, isCoureur, raceController.getMyRaces);
 router.get("/:id", raceController.getRace);
 // Modifier/Supprimer une course : seulement organisateur (et owner)
 router.put("/:id", auth, isOrganisateur, raceController.updateRace);

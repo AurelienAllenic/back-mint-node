@@ -217,6 +217,69 @@ exports.getRaces = async (req, res) => {
   }
 };
 
+// Récupérer les courses d'un coureur (mes courses inscrites)
+exports.getMyRaces = async (req, res) => {
+  try {
+    const userId = req.userId;
+
+    if (!userId) {
+      return res.status(401).json({ message: "Non authentifié." });
+    }
+
+    // Vérifier que l'utilisateur est bien un coureur (déjà vérifié par middleware, mais double vérification)
+    const user = await User.findById(userId);
+    if (!user || user.role !== "coureur") {
+      return res.status(403).json({
+        message: "Seuls les coureurs peuvent accéder à leurs courses.",
+      });
+    }
+
+    // Récupérer toutes les courses où l'utilisateur est dans le tableau runners
+    const races = await Race.find({ runners: userId })
+      .populate("organization")
+      .populate("runners")
+      .populate("owner")
+      .sort({ startDate: -1 }); // Trier par date de début (plus récentes en premier)
+
+    // Formater les données pour correspondre au format attendu par le frontend
+    const formattedRaces = races.map((race) => {
+      const now = new Date();
+      const startDate = new Date(race.startDate);
+      const endDate = race.endDate ? new Date(race.endDate) : null;
+
+      let status = "upcoming";
+      if (endDate && now > endDate) {
+        status = "completed";
+      } else if (now >= startDate && (!endDate || now <= endDate)) {
+        status = "ongoing";
+      }
+
+      return {
+        _id: race._id,
+        name: race.name,
+        date: race.startDate,
+        location: race.organization?.name || "Non spécifié",
+        distance: race.distance || null,
+        status: status,
+        startDate: race.startDate,
+        endDate: race.endDate,
+        organization: race.organization,
+      };
+    });
+
+    res.status(200).json({
+      races: formattedRaces,
+      total: formattedRaces.length,
+    });
+  } catch (error) {
+    console.error("Erreur lors de la récupération des courses du coureur:", error);
+    res.status(500).json({
+      message: "Erreur lors de la récupération de vos courses.",
+      error: error.message,
+    });
+  }
+};
+
 // Lire une course par ID
 exports.getRace = async (req, res) => {
   try {
