@@ -20,7 +20,7 @@ const SECRET_KEY = process.env.JWT_SECRET || "secret_key";
 // Inscription
 exports.register = async (req, res) => {
   console.log("req.body:", req.body);
-  const { email, password, firstname, lastname, name } = req.body;
+  const { email, password, firstname, lastname, name, role } = req.body;
 
   try {
     const existingUser = await User.findOne({ email });
@@ -35,11 +35,37 @@ exports.register = async (req, res) => {
       finalFirstname = parts[0] || "";
       finalLastname = parts.slice(1).join(" ") || "";
     }
+
+    // Gestion du rôle
+    // Rôles valides : "visitor", "coureur", "organisateur"
+    let finalRole = "coureur"; // Rôle par défaut
+    
+    if (role) {
+      // Valider que le rôle fourni est dans l'enum
+      const validRoles = ["visitor", "coureur", "organisateur"];
+      if (validRoles.includes(role)) {
+        finalRole = role;
+      } else {
+        return res.status(400).json({
+          message: `Rôle invalide. Rôles autorisés: ${validRoles.join(", ")}`,
+        });
+      }
+    }
+
+    // SÉCURITÉ : Empêcher l'inscription directe en tant qu'organisateur
+    // (décommentez cette partie si vous voulez restreindre l'accès)
+    // if (finalRole === "organisateur") {
+    //   return res.status(403).json({
+    //     message: "L'inscription en tant qu'organisateur nécessite une approbation.",
+    //   });
+    // }
+
     const newUser = new User({
       email,
       password,
       firstname: finalFirstname,
       lastname: finalLastname,
+      role: finalRole,
     });
     await newUser.save();
 
@@ -49,6 +75,7 @@ exports.register = async (req, res) => {
       firstname: newUser.firstname,
       lastname: newUser.lastname,
       profileImage: newUser.profileImage,
+      role: newUser.role,
       userId: newUser._id,
       accessToken: jwt.sign(
         { userId: newUser._id },
@@ -89,10 +116,12 @@ exports.login = (req, res, next) => {
               firstname,
               lastname,
               profileImage: user.profileImage,
+              role: user.role,
             },
             firstname,
             lastname,
             profileImage: user.profileImage,
+            role: user.role,
             _id: user._id,
             access_token: jwt.sign(
               { userId: user._id },
@@ -132,7 +161,7 @@ exports.verifyToken = async (req, res) => {
     // Récupérer les informations complètes de l'utilisateur
     const user = await User.findById(
       decodedToken.userId,
-      "_id email firstname lastname profileImage"
+      "_id email firstname lastname profileImage role"
     );
 
     if (!user) {
@@ -152,6 +181,7 @@ exports.verifyToken = async (req, res) => {
         firstname: user.firstname,
         lastname: user.lastname,
         profileImage: user.profileImage,
+        role: user.role,
       },
       accessToken: token,
     });
