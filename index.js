@@ -1,7 +1,7 @@
 const express = require("express");
 const bodyParser = require("body-parser");
+const cors = require('cors')
 const connectDB = require("./config/db");
-const corsConfig = require("./config/corsConfig");
 const authRoutes = require("./routes/authRoutes");
 
 const organizationRoutes = require("./routes/organizationRoutes");
@@ -16,8 +16,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 connectDB();
 
-app.use(corsConfig);
-app.options("*", corsConfig);
+app.use(cors())
 app.use(bodyParser.json({ limit: "15mb" }));
 app.use(bodyParser.urlencoded({ limit: "15mb", extended: true }));
 
