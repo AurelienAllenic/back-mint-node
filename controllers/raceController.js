@@ -274,10 +274,53 @@ exports.createRace = async (req, res) => {
     if (normalizedEmails.length > 0) {
       for (const email of normalizedEmails) {
         try {
+          // Vérifier si une invitation existe déjà pour cet email et cette course
+          const existingInvitation = await RaceInvitation.findOne({
+            email: email.toLowerCase(),
+            race: race._id,
+          });
+
+          if (existingInvitation) {
+            // Si une invitation existe déjà pour cette course, la réutiliser
+            console.log(`ℹ️ Invitation existante trouvée pour ${email} et cette course. Réutilisation de l'invitation existante.`);
+            invitations.push(existingInvitation);
+            
+            // Si l'invitation est acceptée, l'utilisateur est peut-être déjà dans la course
+            if (existingInvitation.status === "accepted") {
+              const existingUser = await User.findOne({ email: email.toLowerCase() });
+              if (existingUser && existingUser.role === "coureur" && !race.runners.includes(existingUser._id)) {
+                race.runners.push(existingUser._id);
+                addedRunners.push(existingUser._id);
+              }
+              emailsSentSuccessfully++; // Invitation déjà acceptée = succès
+              console.log(`✅ Utilisateur ${email} déjà invité et accepté pour cette course`);
+              continue; // Passer au prochain email
+            }
+            
+            // Si l'invitation est en attente, renvoyer l'email
+            if (existingInvitation.status === "pending") {
+              try {
+                await emailService.sendRaceInvitation(
+                  email,
+                  race.name,
+                  existingInvitation.token,
+                  race._id.toString()
+                );
+                emailsSentSuccessfully++;
+                console.log(`✅ Email renvoyé avec succès à ${email} (invitation existante)`);
+                continue; // Passer au prochain email
+              } catch (emailError) {
+                console.error(`❌ Erreur renvoi email à ${email}:`, emailError.message || emailError);
+                emailErrors.push({ email, error: emailError.message || emailError.toString() });
+                continue; // Passer au prochain email même en cas d'erreur
+              }
+            }
+          }
+
           // Vérifier si un utilisateur existe déjà avec cet email
           const existingUser = await User.findOne({ email: email.toLowerCase() });
 
-          // Créer une invitation pour chaque email (même si l'utilisateur existe déjà)
+          // Créer une nouvelle invitation pour cet email et cette course
           const invitation = new RaceInvitation({
             race: race._id,
             email: email,
@@ -639,20 +682,56 @@ exports.addRunners = async (req, res) => {
 
     for (const email of newEmails) {
       try {
-        // Vérifier si une invitation en attente existe déjà pour cet email et cette course
+        // Vérifier si une invitation existe déjà pour cet email et cette course (tous statuts)
         const existingInvitation = await RaceInvitation.findOne({
-          email: email,
+          email: email.toLowerCase(),
           race: id,
-          status: "pending",
         });
 
         if (existingInvitation) {
+          // Si l'invitation est acceptée, l'utilisateur est peut-être déjà dans la course
+          if (existingInvitation.status === "accepted") {
+            emailResults.push({
+              email,
+              status: "already_accepted",
+              message: "Une invitation acceptée existe déjà pour cet email et cette course.",
+            });
+            continue;
+          }
+          
+          // Si l'invitation est en attente, renvoyer l'email
+          if (existingInvitation.status === "pending") {
+            try {
+              await emailService.sendRaceInvitation(
+                email,
+                race.name,
+                existingInvitation.token,
+                id
+              );
+              emailResults.push({
+                email,
+                status: "resent",
+                message: "Email renvoyé pour l'invitation existante.",
+              });
+            } catch (emailError) {
+              console.error(`Erreur renvoi email à ${email}:`, emailError);
+              emailResults.push({
+                email,
+                status: "error",
+                message: "Erreur lors du renvoi de l'email.",
+                error: emailError.message,
+              });
+            }
+            continue;
+          }
+          
+          // Pour les autres statuts (rejected, expired), créer une nouvelle invitation
           emailResults.push({
             email,
             status: "skipped",
-            message: "Une invitation en attente existe déjà pour cet email.",
+            message: `Une invitation avec le statut "${existingInvitation.status}" existe déjà. Création d'une nouvelle invitation.`,
           });
-          continue;
+          // Continuer pour créer une nouvelle invitation
         }
 
         // Créer une nouvelle invitation
