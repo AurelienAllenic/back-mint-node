@@ -218,7 +218,6 @@ exports.getMyInvitations = async (req, res) => {
   }
 };
 
-
 // Récupérer les détails d'une invitation par token (pour vérification avant login/register)
 exports.getInvitationByToken = async (req, res) => {
   try {
@@ -302,6 +301,7 @@ exports.getInvitationByToken = async (req, res) => {
       return res.status(200).json({
         invitation: {
           email: invitation.email,
+          status: invitation.status,
           race: invitation.race,
           invitedBy: invitation.invitedBy,
           createdAt: invitation.createdAt,
