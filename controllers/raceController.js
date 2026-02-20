@@ -1,6 +1,9 @@
 const Race = require("../models/Race");
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 const User = require("../models/User");
+const RaceInvitation = require("../models/RaceInvitation");
+const emailService = require("../services/emailService");
+const Organization = require("../models/Organization");
 
 // Créer un PaymentIntent pour le paiement
 exports.createPaymentIntent = async (req, res) => {
@@ -122,50 +125,115 @@ exports.confirmSubscriptionPayment = async (req, res) => {
 
 // Créer une course
 exports.createRace = async (req, res) => {
+  console.log("\n\n🔥🔥🔥 CREATE RACE APPELÉE 🔥🔥🔥\n");
+  console.log("Timestamp:", new Date().toISOString());
+  console.log("Method:", req.method);
+  console.log("URL:", req.url);
+  console.log("Headers authorization:", req.headers.authorization ? "présent" : "absent");
+  
   try {
+    console.log("req.body AVANT destructuration:", req.body);
+    console.log("Type de req.body:", typeof req.body);
+    
     const {
       name,
       startDate,
       endDate,
       organization,
-      runners,
+      runnerEmails, // ⬅️ Changé de "runners" à "runnerEmails"
       gpxFile,
       paymentIntentId,
     } = req.body;
-    const owner = req.userId; // Assume middleware auth
+    const owner = req.userId;
 
-    // Vérifier que l'utilisateur est bien un organisateur (déjà vérifié par middleware, mais double vérification)
+    // Debug: logger les valeurs reçues COMPLÈTES
+    console.log("=== CREATE RACE - DÉBUT ===");
+    console.log("req.body complet:", JSON.stringify(req.body, null, 2));
+    console.log("req.userId:", req.userId);
+    console.log("--- Détails des champs ---");
+    console.log("name:", name, "| type:", typeof name, "| trimmed:", name?.trim());
+    console.log("startDate:", startDate, "| type:", typeof startDate);
+    console.log("endDate:", endDate, "| type:", typeof endDate);
+    console.log("organization:", organization, "| type:", typeof organization);
+    console.log("runnerEmails:", runnerEmails, "| type:", typeof runnerEmails, "| length:", Array.isArray(runnerEmails) ? runnerEmails.length : "N/A");
+    console.log("gpxFile:", gpxFile ? `présent (${gpxFile.length} chars)` : "absent");
+    console.log("paymentIntentId:", paymentIntentId || "absent");
+    console.log("========================");
+
+    // Vérifier que l'utilisateur est bien un organisateur
     const user = await User.findById(req.userId);
+    console.log("User trouvé:", user ? `${user.email} (role: ${user.role})` : "NON TROUVÉ");
     if (!user || user.role !== "organisateur") {
+      console.log("❌ ERREUR: Utilisateur non organisateur");
       return res.status(403).json({
         error: "Seuls les organisateurs peuvent créer des courses.",
       });
     }
 
-    // Validations basiques
-    if (!name || !startDate || !endDate || !organization || !runners) {
-      return res.status(400).json({ error: "Champs requis manquants" });
+    // Validations basiques - runnerEmails est maintenant optionnel (peut être vide)
+    console.log("--- Validation des champs ---");
+    if (!name || !name.trim()) {
+      console.log("❌ ERREUR: name manquant ou vide");
+      return res.status(400).json({ error: "Le nom de la course est requis" });
     }
+    console.log("✅ name OK");
+    
+    if (!startDate) {
+      console.log("❌ ERREUR: startDate manquant");
+      return res.status(400).json({ error: "La date de début est requise" });
+    }
+    console.log("✅ startDate OK");
+    
+    if (!endDate) {
+      console.log("❌ ERREUR: endDate manquant");
+      return res.status(400).json({ error: "La date de fin est requise" });
+    }
+    console.log("✅ endDate OK");
+    
+    if (!organization || (typeof organization === 'string' && !organization.trim())) {
+      console.log("❌ ERREUR: organization manquant ou vide");
+      console.log("   organization value:", organization);
+      console.log("   organization type:", typeof organization);
+      return res.status(400).json({ error: "L'organisation est requise" });
+    }
+    console.log("✅ organization OK:", organization);
 
-    // Vérifier que tous les runners sont bien des coureurs (pas des organisateurs)
-    if (runners && runners.length > 0) {
-      const runnersUsers = await User.find({ _id: { $in: runners } });
-      const nonCoureurs = runnersUsers.filter(
-        (u) => u.role !== "coureur"
-      );
-      if (nonCoureurs.length > 0) {
+    // Vérifier que l'organization existe dans la base de données
+    console.log("--- Vérification organisation en DB ---");
+    console.log("Recherche organization avec ID:", organization);
+    const orgExists = await Organization.findById(organization);
+    if (!orgExists) {
+      console.log("❌ ERREUR: Organization non trouvée en DB");
+      console.log("   ID recherché:", organization);
+      // Vérifier aussi si c'est peut-être un ID numérique (format frontend)
+      const orgsByCreatedBy = await Organization.find({ created_by_id: req.userId });
+      console.log("   Organisations disponibles pour cet utilisateur:", orgsByCreatedBy.map(o => ({ id: o._id.toString(), name: o.name })));
+      return res.status(400).json({ error: "L'organisation spécifiée n'existe pas" });
+    }
+    console.log("✅ Organization trouvée:", orgExists.name, "(ID:", orgExists._id.toString() + ")");
+
+    // Normaliser les emails si fournis
+    let normalizedEmails = [];
+    if (runnerEmails && Array.isArray(runnerEmails) && runnerEmails.length > 0) {
+      normalizedEmails = runnerEmails.map((email) => email.toLowerCase().trim());
+      
+      // Valider le format des emails
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      const invalidEmails = normalizedEmails.filter((email) => !emailRegex.test(email));
+      if (invalidEmails.length > 0) {
         return res.status(400).json({
-          error:
-            "Seuls les coureurs peuvent participer à une course. Les organisateurs ne peuvent pas rejoindre de course.",
+          error: `Emails invalides: ${invalidEmails.join(", ")}`,
         });
       }
     }
 
-    if (runners.length > 2) {
+    // Vérifier le paiement si nécessaire (plus de 2 emails)
+    if (normalizedEmails.length > 2) {
       if (!paymentIntentId) {
-        return res
-          .status(400)
-          .json({ error: "Paiement requis pour plus de 2 coureurs" });
+        return res.status(400).json({
+          error: "Paiement requis pour plus de 2 coureurs",
+          requiredPayment: (normalizedEmails.length - 2) * 1.5,
+        });
       }
 
       try {
@@ -174,7 +242,7 @@ exports.createRace = async (req, res) => {
           return res.status(400).json({ error: "Paiement non confirmé" });
         }
 
-        const expectedAmount = Math.round((runners.length - 2) * 1.5 * 100); // En centimes
+        const expectedAmount = Math.round((normalizedEmails.length - 2) * 1.5 * 100);
         if (pi.amount !== expectedAmount) {
           return res.status(400).json({ error: "Montant paiement incorrect" });
         }
@@ -184,21 +252,164 @@ exports.createRace = async (req, res) => {
       }
     }
 
+    // Créer et sauvegarder la course d'abord (pour avoir un _id)
     const race = new Race({
       name,
       startDate,
       endDate,
       organization,
-      runners,
+      runners: [], // Tableau vide initialement
       gpxFile,
       owner,
     });
     await race.save();
-    res.status(201).json(race);
+
+    // Créer les invitations pour chaque email
+    const invitations = [];
+    const addedRunners = []; // IDs des utilisateurs ajoutés directement
+    let emailsSentSuccessfully = 0; // Compteur d'emails envoyés avec succès
+    const emailErrors = []; // Liste des erreurs d'email
+    const createdInvitationIds = []; // IDs des invitations créées (pour les supprimer si échec)
+
+    if (normalizedEmails.length > 0) {
+      for (const email of normalizedEmails) {
+        try {
+          // Vérifier si un utilisateur existe déjà avec cet email
+          const existingUser = await User.findOne({ email: email.toLowerCase() });
+
+          if (existingUser && existingUser.role === "coureur") {
+            // Si l'utilisateur existe et est coureur, l'ajouter directement à la course
+            // Pas besoin d'envoyer d'email, donc on compte comme un succès
+            if (!race.runners.includes(existingUser._id)) {
+              race.runners.push(existingUser._id);
+              addedRunners.push(existingUser._id);
+            }
+            // Créer une invitation pour notification
+            const invitation = new RaceInvitation({
+              race: race._id,
+              email: email,
+              invitedBy: req.userId,
+              status: "accepted", // Marquer comme acceptée car déjà ajouté
+            });
+            await invitation.save();
+            invitations.push(invitation);
+            emailsSentSuccessfully++; // Utilisateur existant = succès
+            console.log(`✅ Utilisateur ${email} ajouté directement (pas besoin d'email)`);
+          } else {
+            // Utilisateur n'existe pas, on doit envoyer un email
+            // Créer une invitation en attente
+            const invitation = new RaceInvitation({
+              race: race._id,
+              email: email,
+              invitedBy: req.userId,
+            });
+            await invitation.save();
+            invitations.push(invitation);
+            createdInvitationIds.push(invitation._id);
+
+            // Envoyer l'email d'invitation
+            try {
+              await emailService.sendRaceInvitation(
+                email,
+                race.name,
+                invitation.token,
+                race._id.toString()
+              );
+              emailsSentSuccessfully++; // Email envoyé avec succès
+              console.log(`✅ Email envoyé avec succès à ${email}`);
+            } catch (emailError) {
+              console.error(`❌ Erreur envoi email à ${email}:`, emailError.message || emailError);
+              emailErrors.push({ email, error: emailError.message || emailError.toString() });
+              
+              // Supprimer l'invitation créée car l'email a échoué
+              await RaceInvitation.findByIdAndDelete(invitation._id);
+              const index = invitations.findIndex(inv => inv._id.toString() === invitation._id.toString());
+              if (index > -1) invitations.splice(index, 1);
+              
+              if (emailError.message && emailError.message.includes("Greeting never received")) {
+                console.error("💡 Astuce: Vérifiez votre configuration SMTP:");
+                console.error("   - Pour Gmail: utilisez un 'mot de passe d'application' (pas votre mot de passe normal)");
+                console.error("   - Activez l'authentification à deux facteurs sur votre compte Gmail");
+                console.error("   - Générez un mot de passe d'application: https://myaccount.google.com/apppasswords");
+              }
+            }
+          }
+        } catch (error) {
+          console.error(`Erreur traitement email ${email}:`, error);
+          emailErrors.push({ email, error: error.message || error.toString() });
+        }
+      }
+
+      // Vérifier si au moins un email/utilisateur a été traité avec succès
+      if (emailsSentSuccessfully === 0) {
+        // Aucun email envoyé avec succès et aucun utilisateur ajouté
+        // Supprimer la course et toutes les invitations créées
+        console.error("❌ Aucun email n'a pu être envoyé. Suppression de la course créée.");
+        
+        // Supprimer toutes les invitations restantes
+        for (const invId of createdInvitationIds) {
+          await RaceInvitation.findByIdAndDelete(invId);
+        }
+        
+        // Supprimer la course
+        await Race.findByIdAndDelete(race._id);
+        
+        // Créer un message d'erreur détaillé
+        const errorDetails = emailErrors.length > 0 
+          ? emailErrors.map(e => `${e.email}: ${e.error}`).join("; ")
+          : "Aucun détail disponible";
+        
+        return res.status(400).json({
+          error: "Impossible d'envoyer les invitations par email. La course n'a pas été créée.",
+          message: "Tous les emails ont échoué. Vérifiez votre configuration SMTP dans le fichier .env.",
+          details: errorDetails,
+          failedEmails: emailErrors,
+          help: {
+            smtpHost: process.env.SMTP_HOST || "non configuré",
+            smtpPort: process.env.SMTP_PORT || "non configuré",
+            smtpUser: process.env.SMTP_USER || "non configuré",
+            tips: [
+              "Pour Gmail: utilisez un 'mot de passe d'application' (pas votre mot de passe normal)",
+              "Activez l'authentification à deux facteurs sur votre compte Gmail",
+              "Générez un mot de passe d'application: https://myaccount.google.com/apppasswords",
+              "Vérifiez que SMTP_HOST, SMTP_PORT, SMTP_USER et SMTP_PASSWORD sont correctement configurés dans votre .env"
+            ]
+          }
+        });
+      }
+
+      // Au moins un succès, sauvegarder les modifications de la course (runners ajoutés)
+      await race.save();
+      console.log(`✅ Course créée avec ${emailsSentSuccessfully} invitation(s) traitée(s) avec succès`);
+    }
+
+    // Retourner la course avec les données populées
+    const populatedRace = await Race.findById(race._id)
+      .populate("organization")
+      .populate("runners")
+      .populate("owner");
+
+    console.log("=== CREATE RACE - SUCCÈS ===");
+    console.log("Race créée avec ID:", race._id);
+    console.log("Invitations créées:", invitations.length);
+    console.log("Runners ajoutés directement:", addedRunners.length);
+    console.log("===========================");
+
+    res.status(201).json({
+      ...populatedRace.toObject(),
+      invitationsCreated: invitations.length,
+      runnersAdded: addedRunners.length,
+    });
   } catch (error) {
-    res
-      .status(500)
-      .json({ message: "Erreur lors de la création de la course.", error });
+    console.error("=== CREATE RACE - ERREUR ===");
+    console.error("Erreur complète:", error);
+    console.error("Message:", error.message);
+    console.error("Stack:", error.stack);
+    console.error("===========================");
+    res.status(500).json({
+      message: "Erreur lors de la création de la course.",
+      error: error.message,
+    });
   }
 };
 
@@ -312,6 +523,199 @@ exports.updateRace = async (req, res) => {
     res
       .status(500)
       .json({ message: "Erreur lors de la modification de la course.", error });
+  }
+};
+
+// Ajouter des coureurs à une course existante (envoi d'invitations par email)
+exports.addRunners = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { emails, paymentIntentId } = req.body; // emails est un tableau d'emails
+    const userId = req.userId;
+
+    if (!userId) {
+      return res.status(401).json({ message: "Non authentifié." });
+    }
+
+    // Vérifier que l'utilisateur est bien un organisateur
+    const user = await User.findById(userId);
+    if (!user || user.role !== "organisateur") {
+      return res.status(403).json({
+        error: "Seuls les organisateurs peuvent ajouter des coureurs à une course.",
+      });
+    }
+
+    // Trouver la course
+    const race = await Race.findById(id).populate("runners");
+    if (!race) {
+      return res.status(404).json({ message: "Course non trouvée." });
+    }
+
+    // Vérifier que l'utilisateur est le propriétaire de la course
+    if (race.owner.toString() !== userId) {
+      return res.status(403).json({
+        message: "Seul le propriétaire de la course peut ajouter des coureurs.",
+      });
+    }
+
+    // Validation
+    if (!emails || !Array.isArray(emails) || emails.length === 0) {
+      return res.status(400).json({
+        error: "Veuillez fournir au moins une adresse email.",
+      });
+    }
+
+    // Normaliser les emails (minuscules, trim)
+    const normalizedEmails = emails.map((email) => email.toLowerCase().trim());
+
+    // Vérifier que les emails sont valides
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const invalidEmails = normalizedEmails.filter((email) => !emailRegex.test(email));
+    if (invalidEmails.length > 0) {
+      return res.status(400).json({
+        error: `Emails invalides: ${invalidEmails.join(", ")}`,
+      });
+    }
+
+    // Récupérer les emails des runners déjà dans la course
+    const existingRunnersEmails = race.runners
+      .map((runner) => runner.email?.toLowerCase())
+      .filter(Boolean);
+
+    // Filtrer les emails qui ne sont pas déjà dans la course
+    const newEmails = normalizedEmails.filter(
+      (email) => !existingRunnersEmails.includes(email)
+    );
+
+    if (newEmails.length === 0) {
+      return res.status(400).json({
+        error: "Tous les emails fournis sont déjà participants de cette course.",
+      });
+    }
+
+    // Calculer le nombre total de coureurs après ajout
+    const currentRunnerCount = race.runners.length;
+    const totalRunnerCount = currentRunnerCount + newEmails.length;
+
+    // Vérifier le paiement si nécessaire (plus de 2 coureurs au total)
+    if (totalRunnerCount > 2) {
+      // Calculer combien de nouveaux coureurs nécessitent un paiement
+      const freeSlots = Math.max(0, 2 - currentRunnerCount);
+      const paidRunners = newEmails.length - freeSlots;
+
+      if (paidRunners > 0) {
+        if (!paymentIntentId) {
+          return res.status(400).json({
+            error: `Paiement requis pour ${paidRunners} coureur(s) supplémentaire(s).`,
+            requiredPayment: paidRunners * 1.5, // Montant en euros
+            paidRunners: paidRunners,
+          });
+        }
+
+        try {
+          const pi = await stripe.paymentIntents.retrieve(paymentIntentId);
+          if (pi.status !== "succeeded") {
+            return res.status(400).json({
+              error: "Paiement non confirmé",
+            });
+          }
+
+          const expectedAmount = Math.round(paidRunners * 1.5 * 100); // En centimes
+          if (pi.amount !== expectedAmount) {
+            return res.status(400).json({
+              error: `Montant paiement incorrect. Attendu: ${expectedAmount / 100}€, Reçu: ${pi.amount / 100}€`,
+            });
+          }
+        } catch (error) {
+          console.error("Erreur vérification paiement:", error);
+          return res.status(500).json({
+            error: "Erreur lors de la vérification du paiement",
+          });
+        }
+      }
+    }
+
+    // Créer les invitations pour chaque email
+    const invitations = [];
+    const emailResults = [];
+
+    for (const email of newEmails) {
+      try {
+        // Vérifier si une invitation en attente existe déjà pour cet email et cette course
+        const existingInvitation = await RaceInvitation.findOne({
+          email: email,
+          race: id,
+          status: "pending",
+        });
+
+        if (existingInvitation) {
+          emailResults.push({
+            email,
+            status: "skipped",
+            message: "Une invitation en attente existe déjà pour cet email.",
+          });
+          continue;
+        }
+
+        // Créer une nouvelle invitation
+        const invitation = new RaceInvitation({
+          race: id,
+          email: email,
+          invitedBy: userId,
+        });
+
+        await invitation.save();
+        invitations.push(invitation);
+
+        // Envoyer l'email d'invitation
+        try {
+          await emailService.sendRaceInvitation(
+            email,
+            race.name,
+            invitation.token,
+            id
+          );
+          emailResults.push({
+            email,
+            status: "sent",
+            message: "Invitation envoyée avec succès.",
+          });
+        } catch (emailError) {
+          console.error(`Erreur envoi email à ${email}:`, emailError);
+          emailResults.push({
+            email,
+            status: "invitation_created",
+            message: "Invitation créée mais email non envoyé.",
+            error: emailError.message,
+          });
+        }
+      } catch (error) {
+        console.error(`Erreur création invitation pour ${email}:`, error);
+        emailResults.push({
+          email,
+          status: "error",
+          message: "Erreur lors de la création de l'invitation.",
+          error: error.message,
+        });
+      }
+    }
+
+    // Retourner le résultat
+    res.status(200).json({
+      message: `${invitations.length} invitation(s) créée(s) avec succès.`,
+      invitations: emailResults,
+      totalInvitations: invitations.length,
+      race: await Race.findById(id)
+        .populate("organization")
+        .populate("runners")
+        .populate("owner"),
+    });
+  } catch (error) {
+    console.error("Erreur lors de l'ajout de coureurs:", error);
+    res.status(500).json({
+      message: "Erreur lors de l'ajout de coureurs à la course.",
+      error: error.message,
+    });
   }
 };
 

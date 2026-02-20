@@ -6,7 +6,11 @@ const isOrganisateur = require("../middleware/isOrganisateur");
 const isCoureur = require("../middleware/isCoureur");
 
 // Créer une course : seulement organisateur
-router.post("/", auth, isOrganisateur, raceController.createRace);
+router.post("/", auth, isOrganisateur, (req, res, next) => {
+  console.log("\n🚀 ROUTE POST /race APPELÉE 🚀\n");
+  console.log("Body reçu:", req.body);
+  next();
+}, raceController.createRace);
 router.get("/", raceController.getRaces);
 // IMPORTANT : Cette route doit être AVANT /:id pour éviter les conflits
 router.get("/my-races", auth, isCoureur, raceController.getMyRaces);
@@ -22,6 +26,8 @@ router.post(
   raceController.confirmSubscriptionPayment
 );
 router.post("/activate-premium", auth, raceController.activatePremium);
+// Ajouter des coureurs à une course : seulement organisateur (et owner)
+router.post("/:id/add-runners", auth, isOrganisateur, raceController.addRunners);
 // Rejoindre une course : seulement coureur
 router.post("/:id/join", auth, isCoureur, raceController.joinRace);
 // Quitter une course : seulement coureur
