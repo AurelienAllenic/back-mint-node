@@ -218,14 +218,19 @@ exports.getMyInvitations = async (req, res) => {
   }
 };
 
+
 // Récupérer les détails d'une invitation par token (pour vérification avant login/register)
 exports.getInvitationByToken = async (req, res) => {
   try {
     const { token } = req.params;
     const { raceId } = req.query; // Récupérer raceId depuis les paramètres de requête
 
+    console.log('token', token)
+    console.log('raceId', raceId)
+
     // Construire la requête de recherche
     const query = { token };
+
     
     // Si raceId est fourni, l'ajouter à la requête pour vérifier que l'invitation correspond à la bonne course
     if (raceId) {
