@@ -208,7 +208,8 @@ exports.getRaces = async (req, res) => {
     const races = await Race.find()
       .populate("organization")
       .populate("runners")
-      .populate("owner");
+      .populate("owner")
+      .select("-gpxFile"); // Exclure gpxFile pour optimiser les performances (fichier volumineux)
     res.status(200).json(races);
   } catch (error) {
     res
@@ -239,6 +240,7 @@ exports.getMyRaces = async (req, res) => {
       .populate("organization")
       .populate("runners")
       .populate("owner")
+      .select("-gpxFile") // Exclure gpxFile pour optimiser les performances (fichier volumineux)
       .sort({ startDate: -1 }); // Trier par date de début (plus récentes en premier)
 
     // Formater les données pour correspondre au format attendu par le frontend
