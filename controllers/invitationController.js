@@ -257,22 +257,60 @@ exports.getInvitationByToken = async (req, res) => {
       });
     }
 
-    if (!invitation.isValid()) {
+    // Vérifier si l'invitation est expirée
+    const isExpired = invitation.expiresAt < new Date();
+    
+    // Gérer les différents statuts
+    if (isExpired && invitation.status === "pending") {
       return res.status(400).json({
-        message: "Cette invitation a expiré ou a déjà été traitée.",
+        message: "Cette invitation a expiré.",
         expired: true,
         status: invitation.status,
       });
     }
 
-    res.status(200).json({
-      invitation: {
-        email: invitation.email,
-        race: invitation.race,
-        invitedBy: invitation.invitedBy,
-        createdAt: invitation.createdAt,
-        expiresAt: invitation.expiresAt,
-      },
+    if (invitation.status === "rejected") {
+      return res.status(400).json({
+        message: "Cette invitation a été refusée.",
+        status: invitation.status,
+      });
+    }
+
+    // Si l'invitation est "accepted", on retourne les détails mais on indique qu'elle est déjà acceptée
+    // Cela permet à l'utilisateur de voir qu'il a déjà rejoint la course
+    if (invitation.status === "accepted") {
+      return res.status(200).json({
+        invitation: {
+          email: invitation.email,
+          race: invitation.race,
+          invitedBy: invitation.invitedBy,
+          createdAt: invitation.createdAt,
+          expiresAt: invitation.expiresAt,
+        },
+        alreadyAccepted: true,
+        message: "Vous avez déjà accepté cette invitation et rejoint la course.",
+      });
+    }
+
+    // Si l'invitation est "pending" et non expirée, elle est valide
+    if (invitation.status === "pending" && !isExpired) {
+      return res.status(200).json({
+        invitation: {
+          email: invitation.email,
+          race: invitation.race,
+          invitedBy: invitation.invitedBy,
+          createdAt: invitation.createdAt,
+          expiresAt: invitation.expiresAt,
+        },
+        alreadyAccepted: false,
+      });
+    }
+
+    // Cas par défaut (ne devrait pas arriver)
+    return res.status(400).json({
+      message: "Cette invitation n'est pas valide.",
+      status: invitation.status,
+      expired: isExpired,
     });
   } catch (error) {
     console.error("Erreur lors de la récupération de l'invitation:", error);
