@@ -274,64 +274,103 @@ exports.createRace = async (req, res) => {
     if (normalizedEmails.length > 0) {
       for (const email of normalizedEmails) {
         try {
+          // Vérifier si une invitation existe déjà pour cet email et cette course
+          const existingInvitation = await RaceInvitation.findOne({
+            email: email.toLowerCase(),
+            race: race._id,
+          });
+
+          if (existingInvitation) {
+            // Si une invitation existe déjà pour cette course, la réutiliser
+            console.log(`ℹ️ Invitation existante trouvée pour ${email} et cette course. Réutilisation de l'invitation existante.`);
+            invitations.push(existingInvitation);
+            
+            // Si l'invitation est acceptée, l'utilisateur est peut-être déjà dans la course
+            if (existingInvitation.status === "accepted") {
+              const existingUser = await User.findOne({ email: email.toLowerCase() });
+              if (existingUser && existingUser.role === "coureur" && !race.runners.includes(existingUser._id)) {
+                race.runners.push(existingUser._id);
+                addedRunners.push(existingUser._id);
+              }
+              emailsSentSuccessfully++; // Invitation déjà acceptée = succès
+              console.log(`✅ Utilisateur ${email} déjà invité et accepté pour cette course`);
+              continue; // Passer au prochain email
+            }
+            
+            // Si l'invitation est en attente, renvoyer l'email
+            if (existingInvitation.status === "pending") {
+              try {
+                await emailService.sendRaceInvitation(
+                  email,
+                  race.name,
+                  existingInvitation.token,
+                  race._id.toString()
+                );
+                emailsSentSuccessfully++;
+                console.log(`✅ Email renvoyé avec succès à ${email} (invitation existante)`);
+                continue; // Passer au prochain email
+              } catch (emailError) {
+                console.error(`❌ Erreur renvoi email à ${email}:`, emailError.message || emailError);
+                emailErrors.push({ email, error: emailError.message || emailError.toString() });
+                continue; // Passer au prochain email même en cas d'erreur
+              }
+            }
+          }
+
           // Vérifier si un utilisateur existe déjà avec cet email
           const existingUser = await User.findOne({ email: email.toLowerCase() });
 
+          // Créer une nouvelle invitation pour cet email et cette course (toujours en pending)
+          const invitation = new RaceInvitation({
+            race: race._id,
+            email: email,
+            invitedBy: req.userId,
+            status: "pending",
+          });
+          await invitation.save();
+          invitations.push(invitation);
+          createdInvitationIds.push(invitation._id);
+
+          // Si l'utilisateur existe déjà et est coureur, l'ajouter directement à la course
+          // Mais l'invitation reste en "pending" pour qu'il puisse la voir et l'accepter
           if (existingUser && existingUser.role === "coureur") {
-            // Si l'utilisateur existe et est coureur, l'ajouter directement à la course
-            // Pas besoin d'envoyer d'email, donc on compte comme un succès
             if (!race.runners.includes(existingUser._id)) {
               race.runners.push(existingUser._id);
               addedRunners.push(existingUser._id);
             }
-            // Créer une invitation pour notification
-            const invitation = new RaceInvitation({
-              race: race._id,
-              email: email,
-              invitedBy: req.userId,
-              status: "accepted", // Marquer comme acceptée car déjà ajouté
-            });
-            await invitation.save();
-            invitations.push(invitation);
-            emailsSentSuccessfully++; // Utilisateur existant = succès
-            console.log(`✅ Utilisateur ${email} ajouté directement (pas besoin d'email)`);
-          } else {
-            // Utilisateur n'existe pas, on doit envoyer un email
-            // Créer une invitation en attente
-            const invitation = new RaceInvitation({
-              race: race._id,
-              email: email,
-              invitedBy: req.userId,
-            });
-            await invitation.save();
-            invitations.push(invitation);
-            createdInvitationIds.push(invitation._id);
+            console.log(`✅ Utilisateur ${email} ajouté directement à la course (invitation reste en pending)`);
+          }
 
-            // Envoyer l'email d'invitation
-            try {
-              await emailService.sendRaceInvitation(
-                email,
-                race.name,
-                invitation.token,
-                race._id.toString()
-              );
-              emailsSentSuccessfully++; // Email envoyé avec succès
-              console.log(`✅ Email envoyé avec succès à ${email}`);
-            } catch (emailError) {
-              console.error(`❌ Erreur envoi email à ${email}:`, emailError.message || emailError);
-              emailErrors.push({ email, error: emailError.message || emailError.toString() });
-              
-              // Supprimer l'invitation créée car l'email a échoué
-              await RaceInvitation.findByIdAndDelete(invitation._id);
-              const index = invitations.findIndex(inv => inv._id.toString() === invitation._id.toString());
-              if (index > -1) invitations.splice(index, 1);
-              
-              if (emailError.message && emailError.message.includes("Greeting never received")) {
-                console.error("💡 Astuce: Vérifiez votre configuration SMTP:");
-                console.error("   - Pour Gmail: utilisez un 'mot de passe d'application' (pas votre mot de passe normal)");
-                console.error("   - Activez l'authentification à deux facteurs sur votre compte Gmail");
-                console.error("   - Générez un mot de passe d'application: https://myaccount.google.com/apppasswords");
-              }
+          // Toujours envoyer un email d'invitation (même si l'utilisateur existe déjà)
+          try {
+            await emailService.sendRaceInvitation(
+              email,
+              race.name,
+              invitation.token,
+              race._id.toString()
+            );
+            emailsSentSuccessfully++; // Email envoyé avec succès
+            console.log(`✅ Email envoyé avec succès à ${email}`);
+          } catch (emailError) {
+            console.error(`❌ Erreur envoi email à ${email}:`, emailError.message || emailError);
+            emailErrors.push({ email, error: emailError.message || emailError.toString() });
+            
+            // Supprimer l'invitation créée car l'email a échoué
+            await RaceInvitation.findByIdAndDelete(invitation._id);
+            const index = invitations.findIndex(inv => inv._id.toString() === invitation._id.toString());
+            if (index > -1) invitations.splice(index, 1);
+            
+            // Si l'utilisateur avait été ajouté directement, le retirer aussi
+            if (existingUser && existingUser.role === "coureur") {
+              race.runners = race.runners.filter(runnerId => runnerId.toString() !== existingUser._id.toString());
+              addedRunners = addedRunners.filter(runnerId => runnerId.toString() !== existingUser._id.toString());
+            }
+            
+            if (emailError.message && emailError.message.includes("Greeting never received")) {
+              console.error("💡 Astuce: Vérifiez votre configuration SMTP:");
+              console.error("   - Pour Gmail: utilisez un 'mot de passe d'application' (pas votre mot de passe normal)");
+              console.error("   - Activez l'authentification à deux facteurs sur votre compte Gmail");
+              console.error("   - Générez un mot de passe d'application: https://myaccount.google.com/apppasswords");
             }
           }
         } catch (error) {
@@ -641,20 +680,56 @@ exports.addRunners = async (req, res) => {
 
     for (const email of newEmails) {
       try {
-        // Vérifier si une invitation en attente existe déjà pour cet email et cette course
+        // Vérifier si une invitation existe déjà pour cet email et cette course (tous statuts)
         const existingInvitation = await RaceInvitation.findOne({
-          email: email,
+          email: email.toLowerCase(),
           race: id,
-          status: "pending",
         });
 
         if (existingInvitation) {
+          // Si l'invitation est acceptée, l'utilisateur est peut-être déjà dans la course
+          if (existingInvitation.status === "accepted") {
+            emailResults.push({
+              email,
+              status: "already_accepted",
+              message: "Une invitation acceptée existe déjà pour cet email et cette course.",
+            });
+            continue;
+          }
+          
+          // Si l'invitation est en attente, renvoyer l'email
+          if (existingInvitation.status === "pending") {
+            try {
+              await emailService.sendRaceInvitation(
+                email,
+                race.name,
+                existingInvitation.token,
+                id
+              );
+              emailResults.push({
+                email,
+                status: "resent",
+                message: "Email renvoyé pour l'invitation existante.",
+              });
+            } catch (emailError) {
+              console.error(`Erreur renvoi email à ${email}:`, emailError);
+              emailResults.push({
+                email,
+                status: "error",
+                message: "Erreur lors du renvoi de l'email.",
+                error: emailError.message,
+              });
+            }
+            continue;
+          }
+          
+          // Pour les autres statuts (rejected, expired), créer une nouvelle invitation
           emailResults.push({
             email,
             status: "skipped",
-            message: "Une invitation en attente existe déjà pour cet email.",
+            message: `Une invitation avec le statut "${existingInvitation.status}" existe déjà. Création d'une nouvelle invitation.`,
           });
-          continue;
+          // Continuer pour créer une nouvelle invitation
         }
 
         // Créer une nouvelle invitation

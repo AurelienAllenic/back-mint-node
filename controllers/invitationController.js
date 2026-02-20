@@ -6,16 +6,34 @@ const User = require("../models/User");
 exports.acceptInvitation = async (req, res) => {
   try {
     const { token } = req.params;
+    const { raceId } = req.query; // Récupérer raceId depuis les paramètres de requête
     const userId = req.userId; // Requis maintenant
 
+    // Construire la requête de recherche
+    const query = { token };
+    
+    // Si raceId est fourni, l'ajouter à la requête pour vérifier que l'invitation correspond à la bonne course
+    if (raceId) {
+      query.race = raceId;
+    }
+
     // Trouver l'invitation
-    const invitation = await RaceInvitation.findOne({ token })
+    const invitation = await RaceInvitation.findOne(query)
       .populate("race")
       .populate("invitedBy");
 
     if (!invitation) {
       return res.status(404).json({
         message: "Invitation non trouvée ou invalide.",
+        details: raceId ? "Aucune invitation trouvée pour ce token et cette course." : "Aucune invitation trouvée pour ce token.",
+      });
+    }
+
+    // Vérifier que l'invitation correspond bien à la course demandée si raceId est fourni
+    if (raceId && invitation.race._id.toString() !== raceId) {
+      return res.status(400).json({
+        message: "Cette invitation ne correspond pas à la course spécifiée.",
+        details: `L'invitation est pour la course ${invitation.race._id}, mais vous avez demandé la course ${raceId}.`,
       });
     }
 
@@ -23,6 +41,7 @@ exports.acceptInvitation = async (req, res) => {
     if (!invitation.isValid()) {
       return res.status(400).json({
         message: "Cette invitation a expiré ou a déjà été traitée.",
+        status: invitation.status,
       });
     }
 
@@ -203,8 +222,21 @@ exports.getMyInvitations = async (req, res) => {
 exports.getInvitationByToken = async (req, res) => {
   try {
     const { token } = req.params;
+    const { raceId } = req.query; // Récupérer raceId depuis les paramètres de requête
 
-    const invitation = await RaceInvitation.findOne({ token })
+    console.log('token', token)
+    console.log('raceId', raceId)
+
+    // Construire la requête de recherche
+    const query = { token };
+
+    
+    // Si raceId est fourni, l'ajouter à la requête pour vérifier que l'invitation correspond à la bonne course
+    if (raceId) {
+      query.race = raceId;
+    }
+
+    const invitation = await RaceInvitation.findOne(query)
       .populate({
         path: "race",
         populate: [
@@ -217,24 +249,73 @@ exports.getInvitationByToken = async (req, res) => {
     if (!invitation) {
       return res.status(404).json({
         message: "Invitation non trouvée ou invalide.",
+        details: raceId ? "Aucune invitation trouvée pour ce token et cette course." : "Aucune invitation trouvée pour ce token.",
       });
     }
 
-    if (!invitation.isValid()) {
+    // Vérifier que l'invitation correspond bien à la course demandée si raceId est fourni
+    if (raceId && invitation.race._id.toString() !== raceId) {
       return res.status(400).json({
-        message: "Cette invitation a expiré ou a déjà été traitée.",
-        expired: true,
+        message: "Cette invitation ne correspond pas à la course spécifiée.",
+        details: `L'invitation est pour la course ${invitation.race._id}, mais vous avez demandé la course ${raceId}.`,
       });
     }
 
-    res.status(200).json({
-      invitation: {
-        email: invitation.email,
-        race: invitation.race,
-        invitedBy: invitation.invitedBy,
-        createdAt: invitation.createdAt,
-        expiresAt: invitation.expiresAt,
-      },
+    // Vérifier si l'invitation est expirée
+    const isExpired = invitation.expiresAt < new Date();
+    
+    // Gérer les différents statuts
+    if (isExpired && invitation.status === "pending") {
+      return res.status(400).json({
+        message: "Cette invitation a expiré.",
+        expired: true,
+        status: invitation.status,
+      });
+    }
+
+    if (invitation.status === "rejected") {
+      return res.status(400).json({
+        message: "Cette invitation a été refusée.",
+        status: invitation.status,
+      });
+    }
+
+    // Si l'invitation est "accepted", on retourne les détails mais on indique qu'elle est déjà acceptée
+    // Cela permet à l'utilisateur de voir qu'il a déjà rejoint la course
+    if (invitation.status === "accepted") {
+      return res.status(200).json({
+        invitation: {
+          email: invitation.email,
+          race: invitation.race,
+          invitedBy: invitation.invitedBy,
+          createdAt: invitation.createdAt,
+          expiresAt: invitation.expiresAt,
+        },
+        alreadyAccepted: true,
+        message: "Vous avez déjà accepté cette invitation et rejoint la course.",
+      });
+    }
+
+    // Si l'invitation est "pending" et non expirée, elle est valide
+    if (invitation.status === "pending" && !isExpired) {
+      return res.status(200).json({
+        invitation: {
+          email: invitation.email,
+          status: invitation.status,
+          race: invitation.race,
+          invitedBy: invitation.invitedBy,
+          createdAt: invitation.createdAt,
+          expiresAt: invitation.expiresAt,
+        },
+        alreadyAccepted: false,
+      });
+    }
+
+    // Cas par défaut (ne devrait pas arriver)
+    return res.status(400).json({
+      message: "Cette invitation n'est pas valide.",
+      status: invitation.status,
+      expired: isExpired,
     });
   } catch (error) {
     console.error("Erreur lors de la récupération de l'invitation:", error);
