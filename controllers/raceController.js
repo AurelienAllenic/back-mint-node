@@ -320,27 +320,25 @@ exports.createRace = async (req, res) => {
           // Vérifier si un utilisateur existe déjà avec cet email
           const existingUser = await User.findOne({ email: email.toLowerCase() });
 
-          // Créer une nouvelle invitation pour cet email et cette course
+          // Créer une nouvelle invitation pour cet email et cette course (toujours en pending)
           const invitation = new RaceInvitation({
             race: race._id,
             email: email,
             invitedBy: req.userId,
-            status: existingUser && existingUser.role === "coureur" ? "accepted" : "pending",
+            status: "pending",
           });
           await invitation.save();
           invitations.push(invitation);
           createdInvitationIds.push(invitation._id);
 
           // Si l'utilisateur existe déjà et est coureur, l'ajouter directement à la course
+          // Mais l'invitation reste en "pending" pour qu'il puisse la voir et l'accepter
           if (existingUser && existingUser.role === "coureur") {
             if (!race.runners.includes(existingUser._id)) {
               race.runners.push(existingUser._id);
               addedRunners.push(existingUser._id);
             }
-            // Marquer l'invitation comme acceptée car déjà ajouté
-            invitation.status = "accepted";
-            await invitation.save();
-            console.log(`✅ Utilisateur ${email} ajouté directement à la course`);
+            console.log(`✅ Utilisateur ${email} ajouté directement à la course (invitation reste en pending)`);
           }
 
           // Toujours envoyer un email d'invitation (même si l'utilisateur existe déjà)
