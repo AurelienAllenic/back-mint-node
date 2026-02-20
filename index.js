@@ -1,3 +1,5 @@
+require("dotenv").config();
+
 const express = require("express");
 const bodyParser = require("body-parser");
 const cors = require('cors')
@@ -11,7 +13,6 @@ const userRoutes = require("./routes/userRoutes");
 const visitorRoutes = require("./routes/visitorRoutes");
 const statsRoutes = require("./routes/statsRoutes");
 
-require("dotenv").config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 connectDB();
