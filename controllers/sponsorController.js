@@ -3,15 +3,20 @@ const Sponsor = require("../models/Sponsor");
 // Creer un sponsor
 exports.createSponsor = async (req, res) => {
   try {
-    const { name, image } = req.body;
+    const { name, image, websiteUrl } = req.body;
 
     if (!name || !name.trim()) {
       return res.status(400).json({ message: "Le nom du sponsor est requis." });
     }
 
+    if (websiteUrl && typeof websiteUrl !== "string") {
+      return res.status(400).json({ message: "websiteUrl invalide." });
+    }
+
     const sponsor = new Sponsor({
       name: name.trim(),
       image: image || null,
+      websiteUrl: websiteUrl ? websiteUrl.trim() : null,
       created_by_id: req.userId,
       owner_id: req.userId,
     });
@@ -22,8 +27,36 @@ exports.createSponsor = async (req, res) => {
       id: sponsor._id.toString(),
       name: sponsor.name,
       image: sponsor.image,
+      websiteUrl: sponsor.websiteUrl,
     });
   } catch (error) {
+    // Gestion d'unicité (Mongo duplicate key)
+    if (error && error.code === 11000) {
+      const field = Object.keys(error.keyPattern || error.keyValue || {})[0];
+
+      if (field === "name") {
+        return res.status(409).json({
+          message: "Un sponsor avec ce nom existe déjà pour ce compte.",
+        });
+      }
+
+      if (field === "image") {
+        return res.status(409).json({
+          message: "Un sponsor avec cette image existe déjà pour ce compte.",
+        });
+      }
+
+      if (field === "websiteUrl") {
+        return res.status(409).json({
+          message: "Un sponsor avec cette URL de site existe déjà pour ce compte.",
+        });
+      }
+
+      return res.status(409).json({
+        message: "Un sponsor identique existe déjà pour ce compte.",
+      });
+    }
+
     res
       .status(500)
       .json({ message: "Erreur lors de la creation du sponsor.", error });
@@ -39,6 +72,7 @@ exports.getSponsors = async (req, res) => {
       id: sponsor._id.toString(),
       name: sponsor.name,
       image: sponsor.image,
+      websiteUrl: sponsor.websiteUrl,
     }));
 
     res.status(200).json(formatted);

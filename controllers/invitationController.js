@@ -371,7 +371,19 @@ exports.getRaceInvitationsSummary = async (req, res) => {
       if (!pendingEmails.has(email)) acceptedParticipantsCount += 1;
     }
 
-    return res.json({ pendingCount, acceptedParticipantsCount });
+    // Champs "officiels" + alias pour compat front (anciens noms)
+    return res.json({
+      pendingCount: Number(pendingCount),
+      acceptedParticipantsCount: Number(acceptedParticipantsCount),
+
+      // Alias fréquemment utilisés côté front (fallbacks)
+      participantsCount: Number(acceptedParticipantsCount),
+      accepted_count: Number(acceptedParticipantsCount),
+      participants_accepted: Number(acceptedParticipantsCount),
+
+      pending: Number(pendingCount),
+      pending_count: Number(pendingCount),
+    });
   } catch (error) {
     console.error("Erreur getRaceInvitationsSummary:", error);
     return res.status(500).json({
