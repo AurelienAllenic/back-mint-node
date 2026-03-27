@@ -141,6 +141,7 @@ exports.createRace = async (req, res) => {
       startDate,
       endDate,
       organization,
+      sponsors,
       sponsor,
       runnerEmails, // ⬅️ Changé de "runners" à "runnerEmails"
       gpxFile,
@@ -157,6 +158,7 @@ exports.createRace = async (req, res) => {
     console.log("startDate:", startDate, "| type:", typeof startDate);
     console.log("endDate:", endDate, "| type:", typeof endDate);
     console.log("organization:", organization, "| type:", typeof organization);
+    console.log("sponsors:", sponsors, "| type:", typeof sponsors);
     console.log("sponsor:", sponsor, "| type:", typeof sponsor);
     console.log("runnerEmails:", runnerEmails, "| type:", typeof runnerEmails, "| length:", Array.isArray(runnerEmails) ? runnerEmails.length : "N/A");
     console.log("gpxFile:", gpxFile ? `présent (${gpxFile.length} chars)` : "absent");
@@ -215,19 +217,27 @@ exports.createRace = async (req, res) => {
     }
     console.log("✅ Organization trouvée:", orgExists.name, "(ID:", orgExists._id.toString() + ")");
 
-    // Vérifier le sponsor s'il est fourni
-    let sponsorExists = null;
-    if (sponsor) {
-      sponsorExists = await Sponsor.findOne({
-        _id: sponsor,
+    // Vérifier les sponsors s'ils sont fournis (compat: sponsor string ou sponsors[])
+    const incomingSponsors = Array.isArray(sponsors)
+      ? sponsors
+      : sponsor
+      ? [sponsor]
+      : [];
+    let validatedSponsorIds = [];
+    if (incomingSponsors.length > 0) {
+      const uniqueSponsorIds = [...new Set(incomingSponsors.map(String))];
+      const sponsorDocs = await Sponsor.find({
+        _id: { $in: uniqueSponsorIds },
         created_by_id: req.userId,
-      });
+      }).select("_id");
 
-      if (!sponsorExists) {
+      if (sponsorDocs.length !== uniqueSponsorIds.length) {
         return res.status(400).json({
-          error: "Le sponsor specifie n'existe pas pour ce compte",
+          error: "Un ou plusieurs sponsors specifies n'existent pas pour ce compte",
         });
       }
+
+      validatedSponsorIds = sponsorDocs.map((doc) => doc._id);
     }
 
     // Normaliser les emails si fournis
@@ -276,7 +286,7 @@ exports.createRace = async (req, res) => {
       startDate,
       endDate,
       organization,
-      sponsor: sponsorExists ? sponsorExists._id : undefined,
+      sponsors: validatedSponsorIds,
       runners: [], // Tableau vide initialement
       gpxFile,
       owner,
@@ -444,7 +454,7 @@ exports.createRace = async (req, res) => {
     // Retourner la course avec les données populées
     const populatedRace = await Race.findById(race._id)
       .populate("organization")
-      .populate("sponsor")
+      .populate("sponsors")
       .populate("runners")
       .populate("owner");
 
@@ -477,7 +487,7 @@ exports.getRaces = async (req, res) => {
   try {
     const races = await Race.find()
       .populate("organization")
-      .populate("sponsor")
+      .populate("sponsors")
       .populate("runners")
       .populate("owner")
       .select("-gpxFile"); // Exclure gpxFile pour optimiser les performances (fichier volumineux)
@@ -509,7 +519,7 @@ exports.getMyRaces = async (req, res) => {
     // Récupérer toutes les courses où l'utilisateur est dans le tableau runners
     const races = await Race.find({ runners: userId })
       .populate("organization")
-      .populate("sponsor")
+      .populate("sponsors")
       .populate("runners")
       .populate("owner")
       .select("-gpxFile") // Exclure gpxFile pour optimiser les performances (fichier volumineux)
@@ -538,7 +548,7 @@ exports.getMyRaces = async (req, res) => {
         startDate: race.startDate,
         endDate: race.endDate,
         organization: race.organization,
-        sponsor: race.sponsor || null,
+        sponsors: race.sponsors || [],
       };
     });
 
@@ -560,7 +570,7 @@ exports.getRace = async (req, res) => {
   try {
     const race = await Race.findById(req.params.id)
       .populate("organization")
-      .populate("sponsor")
+      .populate("sponsors")
       .populate("runners")
       .populate("owner");
     if (!race) return res.status(404).json({ message: "Course non trouvée." });
@@ -592,23 +602,43 @@ exports.updateRace = async (req, res) => {
       }
     }
 
-    if (req.body.sponsor) {
-      const sponsorExists = await Sponsor.findOne({
-        _id: req.body.sponsor,
-        created_by_id: req.userId,
-      });
-      if (!sponsorExists) {
-        return res
-          .status(400)
-          .json({ message: "Le sponsor specifie n'existe pas pour ce compte." });
+    if (
+      Object.prototype.hasOwnProperty.call(req.body, "sponsors") ||
+      Object.prototype.hasOwnProperty.call(req.body, "sponsor")
+    ) {
+      const rawSponsors = Object.prototype.hasOwnProperty.call(req.body, "sponsors")
+        ? req.body.sponsors
+        : req.body.sponsor;
+
+      const sponsorIds = Array.isArray(rawSponsors)
+        ? rawSponsors
+        : rawSponsors
+        ? [rawSponsors]
+        : [];
+
+      const uniqueSponsorIds = [...new Set(sponsorIds.map(String))];
+      if (uniqueSponsorIds.length > 0) {
+        const sponsorDocs = await Sponsor.find({
+          _id: { $in: uniqueSponsorIds },
+          created_by_id: req.userId,
+        }).select("_id");
+        if (sponsorDocs.length !== uniqueSponsorIds.length) {
+          return res
+            .status(400)
+            .json({ message: "Un ou plusieurs sponsors specifies n'existent pas pour ce compte." });
+        }
+        req.body.sponsors = sponsorDocs.map((doc) => doc._id);
+      } else {
+        req.body.sponsors = [];
       }
+      delete req.body.sponsor;
     }
 
     Object.assign(race, req.body);
     await race.save();
     const updatedRace = await Race.findById(race._id)
       .populate("organization")
-      .populate("sponsor")
+      .populate("sponsors")
       .populate("runners")
       .populate("owner");
     res.status(200).json(updatedRace);
@@ -836,7 +866,7 @@ exports.addRunners = async (req, res) => {
       totalInvitations: invitations.length,
       race: await Race.findById(id)
         .populate("organization")
-        .populate("sponsor")
+        .populate("sponsors")
         .populate("runners")
         .populate("owner"),
     });
@@ -910,7 +940,7 @@ exports.joinRace = async (req, res) => {
     // Retourner la course mise à jour avec les données populées
     const updatedRace = await Race.findById(id)
       .populate("organization")
-      .populate("sponsor")
+      .populate("sponsors")
       .populate("runners")
       .populate("owner");
 
@@ -972,7 +1002,7 @@ exports.leaveRace = async (req, res) => {
     // Retourner la course mise à jour avec les données populées
     const updatedRace = await Race.findById(id)
       .populate("organization")
-      .populate("sponsor")
+      .populate("sponsors")
       .populate("runners")
       .populate("owner");
 
