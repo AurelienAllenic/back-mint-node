@@ -1,5 +1,10 @@
 const nodemailer = require("nodemailer");
 
+const normalizeBaseUrl = (value) => {
+  if (!value || typeof value !== "string") return "";
+  return value.trim().replace(/\/+$/, "");
+};
+
 // Configuration du transporteur SMTP
 const createTransporter = () => {
   const port = parseInt(process.env.SMTP_PORT || "587");
@@ -65,16 +70,20 @@ exports.sendRaceInvitation = async (email, raceName, invitationToken, raceId) =>
   try {
     const transporter = createTransporter();
     
-    // Utiliser l'URL de la page web d'invitation (priorité) ou le deep link mobile
-    const webInvitationUrl = process.env.WEB_INVITATION_URL;
-    const backendUrl = process.env.BACKEND_URL || process.env.API_URL || "http://localhost:3000";
+    // Utiliser l'URL web publique pour l'invitation (priorite), sinon fallback mobile
+    const webInvitationUrl = normalizeBaseUrl(
+      process.env.PUBLIC_WEB_APP_URL || process.env.FRONTEND_URL || process.env.WEB_INVITATION_URL
+    );
+    const backendUrl = normalizeBaseUrl(
+      process.env.BACKEND_URL || process.env.API_URL || "http://localhost:3000"
+    );
     const appScheme = process.env.APP_SCHEME || "mint";
     
     let invitationLink;
     
     if (webInvitationUrl) {
       // Si une URL web est configurée, utiliser directement cette URL
-      invitationLink = `${webInvitationUrl}/race-invitation?token=${invitationToken}&raceId=${raceId}&email=${encodeURIComponent(email)}`;
+      invitationLink = `${webInvitationUrl}/race-invitation?token=${encodeURIComponent(invitationToken)}&raceId=${encodeURIComponent(raceId)}&email=${encodeURIComponent(email)}`;
       console.log("=== Lien d'invitation généré (Page Web) ===");
       console.log("URL web:", invitationLink);
     } else {
