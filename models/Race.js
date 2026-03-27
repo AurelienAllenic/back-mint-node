@@ -10,6 +10,11 @@ const RaceSchema = new mongoose.Schema(
       ref: "Organization",
       required: true,
     },
+    sponsor: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Sponsor",
+      required: false,
+    },
     runners: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
     gpxFile: { type: String }, // URL ou chemin du fichier GPX
     owner: {

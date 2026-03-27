@@ -5,6 +5,7 @@ const connectDB = require("./config/db");
 const authRoutes = require("./routes/authRoutes");
 
 const organizationRoutes = require("./routes/organizationRoutes");
+const sponsorRoutes = require("./routes/sponsorRoutes");
 
 require("dotenv").config();
 
@@ -35,6 +36,7 @@ app.use("/", redirectRoutes);
 app.use("/auth", authRoutes);
 
 app.use("/organizations", organizationRoutes);
+app.use("/sponsors", sponsorRoutes);
 
 app.use("/race", raceRoutes);
 
