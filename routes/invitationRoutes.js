@@ -15,4 +15,11 @@ router.post("/token/:token/accept", auth, invitationController.acceptInvitation)
 // Refuser une invitation (requiert auth)
 router.post("/token/:token/reject", auth, invitationController.rejectInvitation);
 
+// Résumé invitations d'une course (owner uniquement)
+router.get(
+  "/race/:raceId/invitations-summary",
+  auth,
+  invitationController.getRaceInvitationsSummary
+);
+
 module.exports = router;

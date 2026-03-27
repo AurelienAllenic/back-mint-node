@@ -325,3 +325,58 @@ exports.getInvitationByToken = async (req, res) => {
     });
   }
 };
+
+// Résumé invitations d'une course (owner uniquement)
+// GET /invitations/race/:raceId/invitations-summary
+exports.getRaceInvitationsSummary = async (req, res) => {
+  try {
+    const { raceId } = req.params;
+    const userId = req.userId;
+
+    if (!userId) {
+      return res.status(401).json({ message: "Non authentifié." });
+    }
+
+    const race = await Race.findById(raceId);
+    if (!race) {
+      return res.status(404).json({ error: "Course non trouvée" });
+    }
+
+    if (race.owner?.toString() !== userId) {
+      return res.status(403).json({ error: "Accès refusé" });
+    }
+
+    const now = new Date();
+
+    const pendingList = await RaceInvitation.find({
+      race: raceId,
+      status: "pending",
+      expiresAt: { $gt: now },
+    }).select("email");
+
+    const pendingEmails = new Set(
+      pendingList.map((i) => (i.email || "").toLowerCase())
+    );
+    const pendingCount = pendingList.length;
+
+    await race.populate({ path: "runners", select: "email" });
+
+    let acceptedParticipantsCount = 0;
+    for (const runner of race.runners || []) {
+      const email = (runner?.email || "").toLowerCase();
+      if (!email) {
+        acceptedParticipantsCount += 1;
+        continue;
+      }
+      if (!pendingEmails.has(email)) acceptedParticipantsCount += 1;
+    }
+
+    return res.json({ pendingCount, acceptedParticipantsCount });
+  } catch (error) {
+    console.error("Erreur getRaceInvitationsSummary:", error);
+    return res.status(500).json({
+      message: "Erreur lors de la récupération du résumé des invitations.",
+      error: error.message,
+    });
+  }
+};
