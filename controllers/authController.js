@@ -19,10 +19,34 @@ const Race = require("../models/Race");
 
 const SECRET_KEY = process.env.JWT_SECRET || "secret_key";
 
+/** Sponsor personnel coureur : ignoré si rôle !== coureur ou si pas de nom. */
+function normalizeRunnerSponsorForCoureur(runnerSponsor, role) {
+  if (role !== "coureur") return undefined;
+  if (runnerSponsor == null || typeof runnerSponsor !== "object") return undefined;
+  const name =
+    runnerSponsor.name != null ? String(runnerSponsor.name).trim() : "";
+  if (!name) return undefined;
+  const image =
+    runnerSponsor.image != null &&
+    String(runnerSponsor.image).trim() !== ""
+      ? String(runnerSponsor.image).trim()
+      : null;
+  return { name, image };
+}
+
 // Inscription
 exports.register = async (req, res) => {
   console.log("req.body:", req.body);
-  const { email, password, firstname, lastname, name, role, invitationToken } = req.body;
+  const {
+    email,
+    password,
+    firstname,
+    lastname,
+    name,
+    role,
+    invitationToken,
+    runnerSponsor,
+  } = req.body;
 
   try {
     const existingUser = await User.findOne({ email });
@@ -62,12 +86,15 @@ exports.register = async (req, res) => {
     //   });
     // }
 
+    const rs = normalizeRunnerSponsorForCoureur(runnerSponsor, finalRole);
+
     const newUser = new User({
       email,
       password,
       firstname: finalFirstname,
       lastname: finalLastname,
       role: finalRole,
+      ...(rs ? { runnerSponsor: rs } : {}),
     });
     await newUser.save();
 
@@ -119,6 +146,7 @@ exports.register = async (req, res) => {
       lastname: newUser.lastname,
       profileImage: newUser.profileImage,
       role: newUser.role,
+      runnerSponsor: newUser.runnerSponsor || null,
       userId: newUser._id,
       raceAdded: raceAdded,
       accessToken: jwt.sign(
@@ -200,11 +228,13 @@ exports.login = async (req, res, next) => {
         lastname,
         profileImage: user.profileImage,
         role: user.role,
+        runnerSponsor: user.runnerSponsor || null,
       },
       firstname,
       lastname,
       profileImage: user.profileImage,
       role: user.role,
+      runnerSponsor: user.runnerSponsor || null,
       _id: user._id,
       raceAdded: raceAdded,
       access_token: jwt.sign(
@@ -239,7 +269,7 @@ exports.verifyToken = async (req, res) => {
     // Récupérer les informations complètes de l'utilisateur
     const user = await User.findById(
       decodedToken.userId,
-      "_id email firstname lastname profileImage role"
+      "_id email firstname lastname profileImage role runnerSponsor"
     );
 
     if (!user) {
@@ -260,6 +290,7 @@ exports.verifyToken = async (req, res) => {
         lastname: user.lastname,
         profileImage: user.profileImage,
         role: user.role,
+        runnerSponsor: user.runnerSponsor || null,
       },
       accessToken: token,
     });
