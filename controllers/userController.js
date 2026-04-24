@@ -8,7 +8,7 @@ exports.getProfile = async (req, res) => {
 
     const user = await User.findById(
       userId,
-      "_id email firstname lastname profileImage isPremium subscriptionId"
+      "_id email firstname lastname profileImage isPremium subscriptionId runnerSponsor role"
     );
 
     if (!user) {
@@ -31,25 +31,83 @@ exports.getProfile = async (req, res) => {
 exports.updateProfile = async (req, res) => {
   try {
     const userId = req.userId; // Depuis le middleware d'auth
-    const { firstname, lastname, profileImage } = req.body;
+    const { firstname, lastname, profileImage, runnerSponsor } = req.body;
 
-    // Vérifier qu'au moins un champ est fourni
-    if (!firstname && !lastname && !profileImage) {
+    const hasProfileField =
+      firstname !== undefined ||
+      lastname !== undefined ||
+      profileImage !== undefined;
+    const hasRunnerSponsorField = Object.prototype.hasOwnProperty.call(
+      req.body,
+      "runnerSponsor"
+    );
+
+    if (!hasProfileField && !hasRunnerSponsorField) {
       return res.status(400).json({
         message: "Aucun champ à mettre à jour.",
       });
     }
 
-    // Construire l'objet de mise à jour
+    const userBefore = await User.findById(userId);
+    if (!userBefore) {
+      return res.status(404).json({
+        message: "Utilisateur non trouvé.",
+      });
+    }
+
     const update = {};
     if (firstname !== undefined) update.firstname = firstname;
     if (lastname !== undefined) update.lastname = lastname;
     if (profileImage !== undefined) update.profileImage = profileImage;
 
-    // Mettre à jour l'utilisateur
-    const user = await User.findByIdAndUpdate(userId, update, {
+    let unsetRunnerSponsor = false;
+
+    if (hasRunnerSponsorField) {
+      if (userBefore.role !== "coureur") {
+        return res.status(403).json({
+          message:
+            "Le sponsor personnel (runnerSponsor) est réservé aux comptes coureur.",
+        });
+      }
+      if (runnerSponsor === null) {
+        unsetRunnerSponsor = true;
+      } else if (typeof runnerSponsor === "object" && runnerSponsor !== null) {
+        const name =
+          runnerSponsor.name != null ? String(runnerSponsor.name).trim() : "";
+        if (!name) {
+          return res.status(400).json({
+            message:
+              "Le nom du sponsor est requis pour enregistrer ou modifier le sponsor.",
+          });
+        }
+        const image =
+          runnerSponsor.image != null &&
+          String(runnerSponsor.image).trim() !== ""
+            ? String(runnerSponsor.image).trim()
+            : null;
+        update.runnerSponsor = { name, image };
+      } else {
+        return res.status(400).json({ message: "runnerSponsor invalide." });
+      }
+    }
+
+    const mongoOp = {};
+    if (Object.keys(update).length > 0) {
+      mongoOp.$set = update;
+    }
+    if (unsetRunnerSponsor) {
+      mongoOp.$unset = { runnerSponsor: 1 };
+    }
+
+    if (Object.keys(mongoOp).length === 0) {
+      return res.status(400).json({
+        message: "Aucun champ à mettre à jour.",
+      });
+    }
+
+    const user = await User.findByIdAndUpdate(userId, mongoOp, {
       new: true,
-      select: "_id email firstname lastname profileImage",
+      select: "_id email firstname lastname profileImage runnerSponsor role",
     });
 
     if (!user) {

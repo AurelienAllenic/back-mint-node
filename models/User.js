@@ -9,6 +9,11 @@ const UserSchema = new mongoose.Schema({
   role: { type: String, default: "coureur", enum: ["visitor", "coureur", "organisateur"] },
   profileImage: { type: String, required: false },
   isPremium: { type: Boolean, default: false },
+  // Sponsor personnel du coureur (CRUD via compte / inscription facultatif)
+  runnerSponsor: {
+    name: { type: String, trim: true },
+    image: { type: String, default: null },
+  },
 });
 
 // Hash password before saving it
