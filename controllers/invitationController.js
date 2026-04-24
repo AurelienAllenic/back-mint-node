@@ -325,3 +325,90 @@ exports.getInvitationByToken = async (req, res) => {
     });
   }
 };
+
+// Invitations en attente (pending + non expirées) pour une course — propriétaire uniquement
+// GET /invitations/race/:raceId/summary
+// Même logique que isValid() : status === "pending" && expiresAt > maintenant
+exports.getRacePendingInvitationsSummaryForOwner = async (req, res) => {
+  try {
+    const { raceId } = req.params;
+    const userId = req.userId;
+
+    if (!userId) {
+      return res.status(401).json({ message: "Non authentifié." });
+    }
+
+    const race = await Race.findById(raceId);
+    if (!race) {
+      return res.status(404).json({ message: "Course non trouvée." });
+    }
+
+    if (race.owner.toString() !== userId) {
+      return res.status(403).json({ message: "Accès refusé." });
+    }
+
+    const now = new Date();
+
+    // Uniquement invitations encore actionnables : pending + non expirées.
+    // rejected / accepted / expired ne sont ni comptées ni listées.
+    const invitations = await RaceInvitation.find({
+      race: raceId,
+      status: { $in: ["pending"] },
+      expiresAt: { $gt: now },
+    })
+      .select("email status createdAt expiresAt")
+      .sort({ createdAt: -1 });
+
+    const pendingInvitations = invitations
+      .filter(
+        (inv) =>
+          inv.status === "pending" &&
+          typeof inv.isValid === "function" &&
+          inv.isValid()
+      )
+      .map((inv) => ({
+        email: inv.email,
+        createdAt: inv.createdAt,
+        expiresAt: inv.expiresAt,
+      }));
+
+    const pendingCount = pendingInvitations.length;
+    const pendingEmails = new Set(
+      pendingInvitations.map((p) => (p.email || "").toLowerCase())
+    );
+
+    await race.populate({ path: "runners", select: "email" });
+
+    let acceptedParticipantsCount = 0;
+    for (const runner of race.runners || []) {
+      const email = (runner?.email || "").toLowerCase();
+      if (!email) {
+        acceptedParticipantsCount += 1;
+        continue;
+      }
+      if (!pendingEmails.has(email)) {
+        acceptedParticipantsCount += 1;
+      }
+    }
+
+    const pendingN = Number(pendingCount);
+    const acceptedN = Number(acceptedParticipantsCount);
+
+    return res.status(200).json({
+      pendingCount: pendingN,
+      pendingInvitations,
+      acceptedParticipantsCount: acceptedN,
+      participantsCount: acceptedN,
+      pending: pendingN,
+      pending_count: pendingN,
+      accepted_count: acceptedN,
+      participants_accepted: acceptedN,
+    });
+  } catch (error) {
+    console.error("Erreur getRacePendingInvitationsSummaryForOwner:", error);
+    res.status(500).json({
+      message: "Erreur lors de la récupération des invitations en attente.",
+      error: error.message,
+    });
+  }
+};
