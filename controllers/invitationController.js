@@ -20,10 +20,19 @@ exports.acceptInvitation = async (req, res) => {
       });
     }
 
-    // Vérifier que l'invitation est valide
-    if (!invitation.isValid()) {
+    // On ne bloque que les invitations refusées ou expirées.
+    // Une invitation déjà "accepted" est traitée de façon idempotente plus bas
+    // (cas fréquent : le login/register avec invitationToken l'a déjà acceptée).
+    const isExpired = invitation.expiresAt < new Date();
+    if (invitation.status === "rejected") {
       return res.status(400).json({
-        message: "Cette invitation a expiré ou a déjà été traitée.",
+        message: "Cette invitation a été refusée.",
+        status: invitation.status,
+      });
+    }
+    if (invitation.status === "pending" && isExpired) {
+      return res.status(400).json({
+        message: "Cette invitation a expiré.",
         status: invitation.status,
       });
     }
