@@ -6,34 +6,17 @@ const User = require("../models/User");
 exports.acceptInvitation = async (req, res) => {
   try {
     const { token } = req.params;
-    const { raceId } = req.query; // Récupérer raceId depuis les paramètres de requête
     const userId = req.userId; // Requis maintenant
 
-    // Construire la requête de recherche
-    const query = { token };
-    
-    // Si raceId est fourni, l'ajouter à la requête pour vérifier que l'invitation correspond à la bonne course
-    if (raceId) {
-      query.race = raceId;
-    }
-
-    // Trouver l'invitation
-    const invitation = await RaceInvitation.findOne(query)
+    // Le token est unique : il identifie l'invitation à lui seul.
+    const invitation = await RaceInvitation.findOne({ token })
       .populate("race")
       .populate("invitedBy");
 
     if (!invitation) {
       return res.status(404).json({
         message: "Invitation non trouvée ou invalide.",
-        details: raceId ? "Aucune invitation trouvée pour ce token et cette course." : "Aucune invitation trouvée pour ce token.",
-      });
-    }
-
-    // Vérifier que l'invitation correspond bien à la course demandée si raceId est fourni
-    if (raceId && invitation.race._id.toString() !== raceId) {
-      return res.status(400).json({
-        message: "Cette invitation ne correspond pas à la course spécifiée.",
-        details: `L'invitation est pour la course ${invitation.race._id}, mais vous avez demandé la course ${raceId}.`,
+        details: "Aucune invitation trouvée pour ce token.",
       });
     }
 
@@ -222,21 +205,10 @@ exports.getMyInvitations = async (req, res) => {
 exports.getInvitationByToken = async (req, res) => {
   try {
     const { token } = req.params;
-    const { raceId } = req.query; // Récupérer raceId depuis les paramètres de requête
 
-    console.log('token', token)
-    console.log('raceId', raceId)
-
-    // Construire la requête de recherche
-    const query = { token };
-
-    
-    // Si raceId est fourni, l'ajouter à la requête pour vérifier que l'invitation correspond à la bonne course
-    if (raceId) {
-      query.race = raceId;
-    }
-
-    const invitation = await RaceInvitation.findOne(query)
+    // Le token est unique : il identifie l'invitation à lui seul.
+    // Le raceId éventuellement présent dans l'URL n'est qu'informatif.
+    const invitation = await RaceInvitation.findOne({ token })
       .populate({
         path: "race",
         populate: [
@@ -249,15 +221,7 @@ exports.getInvitationByToken = async (req, res) => {
     if (!invitation) {
       return res.status(404).json({
         message: "Invitation non trouvée ou invalide.",
-        details: raceId ? "Aucune invitation trouvée pour ce token et cette course." : "Aucune invitation trouvée pour ce token.",
-      });
-    }
-
-    // Vérifier que l'invitation correspond bien à la course demandée si raceId est fourni
-    if (raceId && invitation.race._id.toString() !== raceId) {
-      return res.status(400).json({
-        message: "Cette invitation ne correspond pas à la course spécifiée.",
-        details: `L'invitation est pour la course ${invitation.race._id}, mais vous avez demandé la course ${raceId}.`,
+        details: "Aucune invitation trouvée pour ce token.",
       });
     }
 
