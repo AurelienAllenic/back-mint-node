@@ -5,12 +5,12 @@ const { v4: uuidv4 } = require("uuid");
 // Générer un code visiteur pour une course par un runner
 exports.generateVisitorCode = async (req, res) => {
   try {
-    const { raceId, runnerId } = req.body;
+    const { raceId } = req.body;
+    const runnerId = req.userId;
 
     const race = await Race.findById(raceId);
     if (!race) return res.status(404).json({ message: "Course non trouvée" });
 
-    // Vérifie que le runner fait bien partie de cette course
     const isRunner = race.runners.some((id) => id.toString() === runnerId);
     if (!isRunner) {
       return res
