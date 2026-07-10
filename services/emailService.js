@@ -65,27 +65,14 @@ exports.sendRaceInvitation = async (email, raceName, invitationToken, raceId) =>
   try {
     const transporter = createTransporter();
     
-    // Utiliser l'URL de la page web d'invitation (priorité) ou le deep link mobile
-    const webInvitationUrl = process.env.WEB_INVITATION_URL;
-    const backendUrl = process.env.BACKEND_URL || process.env.API_URL || "http://localhost:3000";
-    const appScheme = process.env.APP_SCHEME || "mint";
-    
-    let invitationLink;
-    
-    if (webInvitationUrl) {
-      // Si une URL web est configurée, utiliser directement cette URL
-      invitationLink = `${webInvitationUrl}/race-invitation?token=${invitationToken}&raceId=${raceId}&email=${encodeURIComponent(email)}`;
-      console.log("=== Lien d'invitation généré (Page Web) ===");
-      console.log("URL web:", invitationLink);
-    } else {
-      // Sinon, utiliser le système de redirection avec deep link mobile
-      const deepLink = `${appScheme}://race-invitation?token=${invitationToken}&raceId=${raceId}&email=${encodeURIComponent(email)}`;
-      invitationLink = `${backendUrl}/redirect-to-app?deepLink=${encodeURIComponent(deepLink)}`;
-      console.log("=== Lien d'invitation généré (Deep Link Mobile) ===");
-      console.log("Deep link mint://:", deepLink);
-      console.log("URL de redirection:", invitationLink);
-    }
-    
+    // Le lien d'invitation pointe toujours vers la landing page web,
+    // que ce soit en local ou en production.
+    const webInvitationUrl = "https://mova-landing-page.vercel.app";
+
+    const invitationLink = `${webInvitationUrl}/race-invitation?token=${invitationToken}&raceId=${raceId}&email=${encodeURIComponent(email)}`;
+    console.log("=== Lien d'invitation généré (Page Web) ===");
+    console.log("URL web:", invitationLink);
+
     console.log("================================");
     
     const mailOptions = {
