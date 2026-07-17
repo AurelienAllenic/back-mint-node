@@ -2,6 +2,7 @@ const Race = require("../models/Race");
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 const User = require("../models/User");
 const RaceInvitation = require("../models/RaceInvitation");
+const RaceProblemReport = require("../models/RaceProblemReport");
 const emailService = require("../services/emailService");
 const Organization = require("../models/Organization");
 const Sponsor = require("../models/Sponsor");
@@ -986,5 +987,127 @@ exports.leaveRace = async (req, res) => {
       message: "Erreur lors de la désinscription de la course.",
       error: error.message,
     });
+  }
+};
+
+const PROBLEM_REASON_LABELS = {
+  blessure: "Blessure",
+  malaise: "Malaise",
+  balisage: "Problème de balisage / parcours",
+  danger: "Danger sur le parcours",
+  abandon: "Abandon",
+  autre: "Autre",
+};
+
+// Signaler un problème pendant une course (coureur -> organisateur)
+exports.reportProblem = async (req, res) => {
+  try {
+    const { id } = req.params; // raceId
+    const { reason, details } = req.body;
+    const userId = req.userId;
+
+    if (!reason || !PROBLEM_REASON_LABELS[reason]) {
+      return res.status(400).json({ error: "Type de problème invalide" });
+    }
+    if (reason === "autre" && (!details || details.trim() === "")) {
+      return res.status(400).json({
+        error: "Une description est requise pour le type 'Autre'",
+      });
+    }
+
+    const race = await Race.findById(id).populate(
+      "owner",
+      "email firstname lastname"
+    );
+    if (!race) {
+      return res.status(404).json({ error: "Course non trouvée" });
+    }
+
+    // Vérifier que l'utilisateur est bien un coureur inscrit à la course
+    const isParticipant = race.runners.some(
+      (runnerId) => runnerId.toString() === userId
+    );
+    if (!isParticipant) {
+      return res.status(403).json({
+        error: "Seuls les coureurs inscrits peuvent signaler un problème",
+      });
+    }
+
+    const runner = await User.findById(userId);
+    const runnerName =
+      runner?.firstname && runner?.lastname
+        ? `${runner.firstname} ${runner.lastname}`
+        : runner?.email || "Un coureur";
+
+    // Enregistrer le signalement
+    const report = new RaceProblemReport({
+      raceId: id,
+      runner: userId,
+      reason,
+      reasonLabel: PROBLEM_REASON_LABELS[reason],
+      details: details?.trim() || "",
+    });
+    await report.save();
+
+    // Notifier l'organisateur par email (le signalement reste enregistré si l'email échoue)
+    const organizerEmail = race.owner?.email;
+    if (organizerEmail) {
+      try {
+        await emailService.sendProblemReport(
+          organizerEmail,
+          race.name,
+          runnerName,
+          PROBLEM_REASON_LABELS[reason],
+          details?.trim() || ""
+        );
+      } catch (emailError) {
+        console.error(
+          "Erreur envoi email signalement:",
+          emailError.message || emailError
+        );
+      }
+    }
+
+    res.status(201).json({
+      message: "Signalement envoyé à l'organisateur",
+      report: {
+        _id: report._id,
+        reason: report.reason,
+        reasonLabel: report.reasonLabel,
+        details: report.details,
+        createdAt: report.createdAt,
+      },
+    });
+  } catch (error) {
+    console.error("Erreur signalement problème:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// Récupérer les signalements d'une course (propriétaire uniquement)
+exports.getRaceProblemReports = async (req, res) => {
+  try {
+    const { id } = req.params; // raceId
+    const userId = req.userId;
+
+    const race = await Race.findById(id);
+    if (!race) {
+      return res.status(404).json({ error: "Course non trouvée" });
+    }
+
+    if (race.owner.toString() !== userId) {
+      return res.status(403).json({
+        error: "Seul le propriétaire peut voir les signalements",
+      });
+    }
+
+    const reports = await RaceProblemReport.find({ raceId: id })
+      .populate("runner", "email firstname lastname")
+      .sort({ createdAt: -1 });
+
+    res.json({ reports });
+  } catch (error) {
+    console.error("Erreur récupération signalements:", error);
+    res.status(500).json({ error: error.message });
   }
 };

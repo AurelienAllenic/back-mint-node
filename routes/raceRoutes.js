@@ -32,5 +32,9 @@ router.post("/:id/add-runners", auth, isOrganisateur, raceController.addRunners)
 router.post("/:id/join", auth, isCoureur, raceController.joinRace);
 // Quitter une course : seulement coureur
 router.post("/:id/leave", auth, isCoureur, raceController.leaveRace);
+// Signaler un problème pendant une course : seulement coureur (inscrit)
+router.post("/:id/report-problem", auth, isCoureur, raceController.reportProblem);
+// Voir les signalements d'une course : seulement organisateur (et owner)
+router.get("/:id/problem-reports", auth, isOrganisateur, raceController.getRaceProblemReports);
 
 module.exports = router;

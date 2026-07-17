@@ -165,6 +165,85 @@ exports.sendRaceInvitation = async (email, raceName, invitationToken, raceId) =>
   }
 };
 
+// Notifier l'organisateur qu'un coureur a signalé un problème pendant une course
+exports.sendProblemReport = async (organizerEmail, raceName, runnerName, reasonLabel, details) => {
+  // Vérifier que la configuration SMTP est présente
+  if (!process.env.SMTP_HOST || !process.env.SMTP_USER || (!process.env.SMTP_PASSWORD && !process.env.SMTP_PASS)) {
+    console.warn("⚠️ Configuration SMTP incomplète. L'email ne sera pas envoyé.");
+    throw new Error("Configuration SMTP manquante");
+  }
+
+  try {
+    const transporter = createTransporter();
+
+    const mailOptions = {
+      from: `"${process.env.SMTP_FROM_NAME || "Mint Racing"}" <${process.env.SMTP_FROM_EMAIL || process.env.SMTP_FROM || process.env.SMTP_USER}>`,
+      to: organizerEmail,
+      subject: `⚠️ Problème signalé sur la course : ${raceName}`,
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background-color: #E53935; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
+            .content { background-color: #f9f9f9; padding: 30px; border-radius: 0 0 8px 8px; }
+            .info-row { margin: 10px 0; }
+            .label { font-weight: bold; }
+            .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1 style="color: #fff; margin: 0;">⚠️ Problème signalé</h1>
+            </div>
+            <div class="content">
+              <p>Bonjour,</p>
+              <p>Un coureur a signalé un problème pendant la course <strong>${raceName}</strong>.</p>
+              <div class="info-row"><span class="label">Coureur :</span> ${runnerName}</div>
+              <div class="info-row"><span class="label">Type de problème :</span> ${reasonLabel}</div>
+              ${details ? `<div class="info-row"><span class="label">Détails :</span> ${details}</div>` : ""}
+              <div class="info-row"><span class="label">Date :</span> ${new Date().toLocaleString("fr-FR", { timeZone: "Europe/Paris" })}</div>
+              <p style="margin-top: 20px;">Connectez-vous à l'application pour suivre la course.</p>
+            </div>
+            <div class="footer">
+              <p>Cet email a été envoyé automatiquement, merci de ne pas y répondre.</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `,
+      text: `
+        Problème signalé sur la course : ${raceName}
+
+        Coureur : ${runnerName}
+        Type de problème : ${reasonLabel}
+        ${details ? `Détails : ${details}` : ""}
+        Date : ${new Date().toLocaleString("fr-FR", { timeZone: "Europe/Paris" })}
+
+        Connectez-vous à l'application pour suivre la course.
+      `,
+    };
+
+    const timeoutMs = 60000;
+    const info = await Promise.race([
+      transporter.sendMail(mailOptions),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error(`Timeout: La connexion au serveur SMTP (${process.env.SMTP_HOST}) a pris trop de temps (>${timeoutMs / 1000}s).`)), timeoutMs)
+      ),
+    ]);
+
+    console.log("✅ Email de signalement envoyé:", info.messageId);
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    console.error(`❌ Erreur lors de l'envoi du signalement à ${organizerEmail}:`, error.message || error);
+    throw error;
+  }
+};
+
 // Tester la connexion SMTP
 exports.testConnection = async () => {
   try {
