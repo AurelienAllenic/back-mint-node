@@ -76,7 +76,7 @@ exports.sendRaceInvitation = async (email, raceName, invitationToken, raceId) =>
     console.log("================================");
     
     const mailOptions = {
-      from: `"${process.env.SMTP_FROM_NAME || "Mint Racing"}" <${process.env.SMTP_FROM_EMAIL || process.env.SMTP_FROM || process.env.SMTP_USER}>`,
+      from: `"${process.env.SMTP_FROM_NAME || "Mova"}" <${process.env.SMTP_FROM_EMAIL || process.env.SMTP_FROM || process.env.SMTP_USER}>`,
       to: email,
       subject: `Invitation à rejoindre la course : ${raceName}`,
       html: `
@@ -177,7 +177,7 @@ exports.sendProblemReport = async (organizerEmail, raceName, runnerName, reasonL
     const transporter = createTransporter();
 
     const mailOptions = {
-      from: `"${process.env.SMTP_FROM_NAME || "Mint Racing"}" <${process.env.SMTP_FROM_EMAIL || process.env.SMTP_FROM || process.env.SMTP_USER}>`,
+      from: `"${process.env.SMTP_FROM_NAME || "Mova"}" <${process.env.SMTP_FROM_EMAIL || process.env.SMTP_FROM || process.env.SMTP_USER}>`,
       to: organizerEmail,
       subject: `⚠️ Problème signalé sur la course : ${raceName}`,
       html: `
